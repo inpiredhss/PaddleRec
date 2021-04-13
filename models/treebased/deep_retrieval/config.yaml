@@ -29,8 +29,8 @@ runner:
   infer_load_path: "output_model_dr"
   infer_start_epoch: 0
   infer_end_epoch: 1
-  item_input_file: index/item_demo.txt
-  item_output_proto: index/graph_item.proto
+  item_input_file: /sshWorkSpace/shuangshuang/paddleRec/PaddleRec/models/treebased/deep_retrieval/index/item_demo.txt
+  item_output_proto: /sshWorkSpace/shuangshuang/paddleRec/PaddleRec/models/treebased/deep_retrieval/index/graph_item.proto
 
 
 # hyper parameters of user-defined network
@@ -44,5 +44,5 @@ hyper_parameters:
   width: 3
   height: 5
   beam_search_num: 2
-  item_path_volume: 2
+  item_path_volume: 1
   user_embedding_size: 2

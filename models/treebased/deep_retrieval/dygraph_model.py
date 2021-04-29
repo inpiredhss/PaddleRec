@@ -79,16 +79,21 @@ class DygraphModel():
             'float32').reshape(-1, self.user_embedding_size))
 
         item_id = batch_data[1]  # (batch_size, 1)   if use_multi_task (batch_size,3)
-        item_id = item_id.numpy().tolist()
+        print("batch_data: {}".format(batch_data))
+        print("item_id: {}".format(item_id))
+        item_id = item_id.numpy().astype(int).tolist()
+        print("item_id_List: {}".format(item_id))
         item_path_id = []
         multi_task_pos_label = []
         multi_task_neg_label = []
         for i in item_id:
             item_path_id.append(self.graph_index.get_path_of_item(i[0]))
             if self.use_multi_task_learning:
-                multi_task_pos_label.append([i[0]])
-                multi_task_neg_label.append([i[1]])
-
+                multi_task_pos_label.append(i[0])
+                multi_task_neg_label.append(i[1])
+        print("item_id_sample: {}".format(i))
+        print("multi_task_pos_label: {}".format(multi_task_pos_label))
+        print("multi_task_neg_label: {}".format(multi_task_neg_label))
 
         item_path_kd_label = []
         print("item_path_id: {}".format(item_path_id))
@@ -110,7 +115,7 @@ class DygraphModel():
         return user_embedding, item_path_kd_label, multi_task_pos_label ,   multi_task_neg_label
 
     def create_infer_feeds(self, batch_data, config):
-        user_embedding = paddle.to_tensor(batch_data[0].numpy().astype(
+        user_embedding = paddle.to_tensor(batch_data[0].numpy().astype(    #  user_embedding ==> batch even?????  batchSize * embSize
             'float32').reshape(-1, self.user_embedding_size))
         return user_embedding
 
@@ -156,19 +161,32 @@ class DygraphModel():
         return loss, metrics_list, print_dict
 
     def infer_forward(self, dy_model, metrics_list, batch_data, config):
-        user_embedding = self.create_infer_feeds(batch_data,
-                                                 config)
-
-        kd_path, path_prob = dy_model.forward(user_embedding, is_infer=True)
-        kd_path_list = kd_path.numpy().tolist()
+        print("batch_data: {}".format(batch_data))
+        user_embedding = self.create_infer_feeds(batch_data, config)
+        print("user_embedding: {}".format(user_embedding))
+        kd_path, path_prob = dy_model.forward(user_embedding, is_infer=True) # all paths for the user_embedding
+        print("kd_path: {}".format(kd_path))
+        kd_path_list = kd_path.numpy().astype(np.int32).tolist()
+        print("kd_path_list: {}".format(kd_path_list))
         print("path_prob: {}".format(path_prob))
 
         em_dict = {}
         # item = 0
         em_dict[0] = []
         for batch_idx, batch in enumerate(kd_path_list):
-            for path_idx, path in enumerate(batch):
+            print("batch: {}".format(batch))
+            for path_idx, path in enumerate(batch):  # all path in the 
+                print("path0:", path)
                 path_id = self.graph_index.kd_represent_to_path_id(path)
+                print("path1:",path_id)
+                # self.graph_index.(path_id)
+                # self.graph_index.get_item_of_path(path_id)
+                path_item_ids = self.graph_index.get_item_of_path(path_id)
+                print("path_item_ids:",path_item_ids)  # ('path_item_ids:', [[]])
+            
+            
+            # mul_infer_forward(user_embedding, path_item_ids)        
+
                 # em_dict[0].append("{}:{}".format(path_id, prob))
         # print(em_dict)
         # self.graph_index.update_Jpath_of_item(

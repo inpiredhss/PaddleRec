@@ -195,7 +195,10 @@ def main(args):
                         list.append((single_pro,single_path))
                     sorted(list,key=itemgetter(0), reverse=True)
                     topk = []
-                    for i in range(dy_model_class.item_path_volume):
+                    for i in range(dy_model_class.item_path_volume -1):
+                        print(i)
+                        print(list)
+                        print(list[i][1])
                         topk.append(dy_model_class.graph_index.kd_represent_to_path_id(list[i][1]))
 
                     topk = np.array(topk).astype("int64")

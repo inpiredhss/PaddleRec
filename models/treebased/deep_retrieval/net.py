@@ -1,3 +1,6 @@
+# coding=utf-8
+# -*- coding: UTF-8 -*- 
+
 # Copyright (c) 2021 PaddlePaddle Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,15 +31,21 @@ class DeepRetrieval(nn.Layer):
         self.item_path_volume = item_path_volume
         self.user_embedding_size = user_embedding_size
 
+        # in_sizes: [user_embedding_size, 2 * user_embedding_size, 3 * user_embedding_size]      # [2,4,6]
         in_sizes = [user_embedding_size + i *
                     user_embedding_size for i in range(self.width)]
         print("in_sizes: {}".format(in_sizes))
+
+        # out_sizes: [height, height, height]     #[4,4,4]
         out_sizes = [self.height] * self.width
         print("out_sizes: {}".format(out_sizes))
+
         self.use_multi_task_learning = use_multi_task_learning
         self.mlp_layers = []
         self.multi_task_mlp_layers_size = [user_embedding_size]
         self.multi_task_mlp_layers = []
+
+        # mlp_layers: [ [in_sizes[0],out_sizes[0]], [in_sizes[1], out_sizes[1]], [in_sizes[2], out_sizes[2]] ]
         for i in range(width):
             linear = paddle.nn.Linear(
                 in_features=in_sizes[i],
@@ -48,6 +57,7 @@ class DeepRetrieval(nn.Layer):
             self.mlp_layers.append(linear)
             self.add_sublayer("C_{}_mlp_weight".format(i), linear)
 
+        # path_embedding: [height,user_embedding_size]
         self.path_embedding = paddle.nn.Embedding(
                 self.height,
                 self.user_embedding_size,
@@ -167,8 +177,8 @@ class DeepRetrieval(nn.Layer):
         return saved_path, final_prob
 
 
-    def forward(self, user_embedding, item_path_kd_label=None, multi_task_positive_labels = None,multi_task_negative_labels = None, is_infer=False):
-
+    def forward(self, user_embedding, item_path_kd_label=None, bs_item_list = [], multi_task_positive_labels = None,multi_task_negative_labels = None, is_infer=False, re_infer=False):
+	print("bs_item_list:{}".format(bs_item_list))
         def expand_layer(input, n):
             # expand input (batch_size, shape) -> (batch_size * n, shape)
             input = paddle.unsqueeze(
@@ -184,19 +194,24 @@ class DeepRetrieval(nn.Layer):
 
         def train_forward():
             # item_path_kd_label: list [ list[ (1, D), ..., (1, D) ],..., ]
+            print("item_path_kd_label: {}".format(item_path_kd_label))
             kd_label_list = []
             for idx, all_kd_val in enumerate(item_path_kd_label):
                 kd_label_list.append(paddle.concat(
                     all_kd_val, axis=0))  # (J, D)
+            print("kd_label_list: {}".format(kd_label_list))
             kd_label = paddle.concat(
                 kd_label_list, axis=0)  # (batch_size * J, D)
-
+            print("kd_label: {}".format(kd_label))
             # find path emb idx for every item
             path_emb_idx_lists = []
             for idx in range(self.width):
                 cur_path_emb_idx = paddle.slice(
                     kd_label, axes=[1], starts=[idx], ends=[idx+1])  # (batch_size * J, 1)
                 path_emb_idx_lists.append(cur_path_emb_idx)
+            print("cur_path_emb_idx: {}".format(cur_path_emb_idx))
+            print("path_emb_idx_lists: {}".format(path_emb_idx_lists))
+            print("item_path_kd_label====kd_label_list====kd_label=====cur_path_emb_idx=====path_emb_idx_lists")
 
             # Lookup table path emb
             # The main purpose of two-step table lookup is for distributed PS training
@@ -207,9 +222,11 @@ class DeepRetrieval(nn.Layer):
                 path_emb.append(emb)
 
             # expand user_embedding (batch_size, emb_shape) -> (batch_size * J, emb_shape)
+            print("user_embedding: {}".format(user_embedding))
             input_embedding = expand_layer(
-                user_embedding, self.item_path_volume)
-
+                user_embedding, self.item_path_volume)   # item_path_volume: 4
+            print("input_embedding: {}".format(input_embedding))
+            print("input_embedding <===> user_embedding * item_path_volume")
             print("data ready")
             # calc prob of every layer
             path_prob_list = []
@@ -224,11 +241,21 @@ class DeepRetrieval(nn.Layer):
                     for j in range(i):
                         cur_input_list.append(paddle.reshape(
                             path_emb[j], (-1, self.user_embedding_size)))
-                    cur_input = paddle.concat(cur_input_list, axis=1)
+                    # print("cur_input_list: {}".format(cur_input_list))  # cur_input_list: [Tensor(shape=[10, 2],Tensor...]
+                    cur_input = paddle.concat(cur_input_list, axis=1)  # Tensor(shape=[10, 6])     <==>   Tensor(shape=[10, 2]) * width=3
+                    # print("cur_input: {}".format(cur_input))
+                print("cur_input: {}".format(cur_input))   # cur_input: Tensor(shape=[10, 4])
+                print("cur_input —— cur_input_list")
+                layer_prob = F.softmax(self.mlp_layers[i](cur_input))  # cur_input: 
+                print("layer_prob: {}".format(layer_prob))     # layer_prob:  shape=[10, 4]
+                print("path_emb_idx_lists[i]: {}".format(path_emb_idx_lists[i]))  # path_emb_idx_lists[i]: Tensor(shape=[8, 1])
+                print("path_emb_idx_lists: {}".format(path_emb_idx_lists)) 
 
-                layer_prob = F.softmax(self.mlp_layers[i](cur_input))
-                cur_path_prob = paddle.index_sample(
-                    layer_prob, path_emb_idx_lists[i])  # (batch_size * J, 1)
+                cur_path_prob = paddle.index_sample(    
+                    layer_prob, path_emb_idx_lists[i])                     #[8,4];[6,1]
+                    # layer_prob  （batch_size* J, height） 
+                    # path_emb_idx_lists[i]
+                    # (batch_size * J, 1)
                 path_prob_list.append(cur_path_prob)
 
             path_prob = paddle.concat(
@@ -242,8 +269,12 @@ class DeepRetrieval(nn.Layer):
                    temp = self.multi_task_mlp_layers[i](temp)
                 
                 # (batch, dot_prodcut_size)
+		print("multi_task_negative_labels:",multi_task_negative_labels)
+		print("multi_task_positive_labels:",multi_task_positive_labels)
                 pos_item_embedding = self.multi_task_item_embedding(paddle.to_tensor(multi_task_positive_labels))
                 neg_item_embedding = self.multi_task_item_embedding(paddle.to_tensor(multi_task_negative_labels))
+		print("pos_item_embedding:",pos_item_embedding)
+		print("neg_item_embedding:",neg_item_embedding)
                 #(batch,1)
                 pos = paddle.dot(temp, pos_item_embedding)
                 neg = paddle.dot(temp, neg_item_embedding)
@@ -263,6 +294,8 @@ class DeepRetrieval(nn.Layer):
 
             height = paddle.full(
                 shape=[1, 1], fill_value=self.height, dtype='int64')
+            print("height: {}".format(height))
+
 
             prev_index = []
             path_prob = []
@@ -275,15 +308,19 @@ class DeepRetrieval(nn.Layer):
                     tmp_output = F.softmax(self.mlp_layers[i](user_embedding))
                     # assert beam_search_num < height
                     # [batch, B]
+                    print("tmp_output0: {}".format(tmp_output))
+                    print("beam_search_num0: {}".format(self.beam_search_num))
                     prob, index = paddle.topk(
                         tmp_output, self.beam_search_num)
                     path_prob.append(prob)
+                    print("path_prob0: {}".format(path_prob))
 
                     # expand user_embedding (batch_size, emb_shape) -> (batch_size * B, emb_shape)
                     input_embedding = expand_layer(
                         user_embedding, self.beam_search_num)
+                    print("input_embedding0: {}".format(input_embedding)) 
                     prev_index.append(index)
-                    print("fist prev_index: {}".format(prev_index))
+                    print("fist prev_index0: {}".format(prev_index))
 
                 else:
                     # other layer, use user embedding + path_embedding
@@ -335,26 +372,41 @@ class DeepRetrieval(nn.Layer):
 
             # [batch,beam,width],[batch,beam]
             kd_path = paddle.concat(prev_index,axis=-1)
+
             print("kd_path",kd_path)
             print("final_prob",final_prob)
             return kd_path, final_prob
 
             # user_embedding01-->net-->user_embedding02-->itemEmbWeight
             # paths&pro-items&pro, final_prob
-            # final_prob ???
-        def mul_infer_forward(user_emb, bs_items_id, final_prob):
-            temp = user_emb
+            # final_prob 
+
+        def mul_infer_forward():
+	    print("re_infer",re_infer)
+	    print("bs_item_list",bs_item_list)
+            temp = user_embedding
             # (batch, dot_product_size)
             for i in range(len(self.multi_task_mlp_layers)):
                 temp = self.multi_task_mlp_layers[i](temp)
-                
-            bs_items_embedding = self.multi_task_item_embedding(paddle.to_tensor(bs_items_id))  # tensor？？？
-            posPros=paddle.dot(temp, bs_items_embedding)  # dot??
+
+            print("user_embedding",user_embedding)
+            print("temp",temp)
+	    print("bs_item_list",bs_item_list)
+            bs_items_embedding = self.multi_task_item_embedding(paddle.to_tensor(bs_item_list))
+            print("bs_items_embedding",bs_items_embedding)
+            #(batch,1)
+            pos_pros=paddle.dot(temp, bs_items_embedding)  
+            print("pos_pros",pos_pros)
             # logPros = paddle.log(paddle.nn.functional.sigmoid(posPros))
-            topk_Pros, indices_topk_posPros = paddle.topk(posPros)    # 问题 如何选出  posPros 对应的 bs_items_id？？？？？
+            topk_Pros, indices_topk_posPros = paddle.topk(pos_pros)    
+            print("topk_Pros",topk_Pros)
+            print("indices_topk_posPros",indices_topk_posPros)
+            return topk_Pros, indices_topk_posPros
             
 
         if is_infer:
             return infer_forward()
+        elif re_infer:
+            return mul_infer_forward()
         else:
             return train_forward()

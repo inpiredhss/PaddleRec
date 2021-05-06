@@ -59,7 +59,7 @@ class DygraphModel():
 
         init_model_path = config.get("model_init_path")
         if init_model_path == None:
-            self.graph_index._init_by_random()
+            self.graph_index._init_by_random()#self.item_input_file, self.item_output_proto)
         else:
              self.graph_index._init_graph(os.path.join(init_model_path, self.path_save_file_name))
         self.use_multi_task_learning = config.get("hyper_parameters.use_multi_task_learning")
@@ -77,17 +77,17 @@ class DygraphModel():
     def create_feeds(self, batch_data, config):
         user_embedding = paddle.to_tensor(batch_data[0].numpy().astype(
             'float32').reshape(-1, self.user_embedding_size))
-
+        print("user_embedding: {}".format(user_embedding))
         item_id = batch_data[1]  # (batch_size, 1)   if use_multi_task (batch_size,3)
         print("batch_data: {}".format(batch_data))
         print("item_id: {}".format(item_id))
-        item_id = item_id.numpy().astype(int).tolist()
-        print("item_id_List: {}".format(item_id))
+        item_id_List = item_id.numpy().astype(int).tolist()
+        print("item_id_List: {}".format(item_id_List))
         item_path_id = []
         multi_task_pos_label = []
         multi_task_neg_label = []
-        for i in item_id:
-            item_path_id.append(self.graph_index.get_path_of_item(i[0]))
+        for i in item_id_List:
+            item_path_id.append(self.graph_index.get_path_of_item(i[0])) # 
             if self.use_multi_task_learning:
                 multi_task_pos_label.append(i[0])
                 multi_task_neg_label.append(i[1])
@@ -100,16 +100,20 @@ class DygraphModel():
 
         # for every example
         for item_path in item_path_id:
+            print("item_path:{}".format(item_path))
             item_kd_represent = []
             # for every path choice of item
             for item_path_j in item_path[0]:
+                print("item_path_j:{}".format(item_path_j))
                 path_label = np.array(
                     self.graph_index.path_id_to_kd_represent(item_path_j))
+                print("path_label:{}".format(path_label))
                 item_kd_represent.append(paddle.to_tensor(
-                    path_label.astype('int64').reshape(1, self.width)))
+                    path_label.astype('int64').reshape(1, self.width)))  #
+                print("item_kd_represent: {}".format(item_kd_represent))
 
             item_path_kd_label.append(item_kd_represent)
-        # print("item_path_kd_label: {}".format(item_path_kd_label))
+        print("item_path_kd_label: {}".format(item_path_kd_label))
         if self.use_multi_task_learning:
             return user_embedding, item_path_kd_label, multi_task_pos_label ,   multi_task_neg_label
         return user_embedding, item_path_kd_label, multi_task_pos_label ,   multi_task_neg_label
@@ -169,12 +173,13 @@ class DygraphModel():
         kd_path_list = kd_path.numpy().astype(np.int32).tolist()
         print("kd_path_list: {}".format(kd_path_list))
         print("path_prob: {}".format(path_prob))
-
+        item_list = []
         em_dict = {}
         # item = 0
         em_dict[0] = []
         for batch_idx, batch in enumerate(kd_path_list):
             print("batch: {}".format(batch))
+            # itemLists=[]
             for path_idx, path in enumerate(batch):  # all path in the 
                 print("path0:", path)
                 path_id = self.graph_index.kd_represent_to_path_id(path)
@@ -182,9 +187,12 @@ class DygraphModel():
                 # self.graph_index.(path_id)
                 # self.graph_index.get_item_of_path(path_id)
                 path_item_ids = self.graph_index.get_item_of_path(path_id)
+                # itemLists=itemLists.append(path_item_ids)
                 print("path_item_ids:",path_item_ids)  # ('path_item_ids:', [[]])
-            
-            
+		for item in path_item_ids[0]:
+		    item_list.append(item)
+		print("item_list:",item_list)          
+
             # mul_infer_forward(user_embedding, path_item_ids)        
 
                 # em_dict[0].append("{}:{}".format(path_id, prob))
@@ -196,4 +204,13 @@ class DygraphModel():
         # print("get_item_of_path(0): {}".format(
         #     self.graph_index.get_item_of_path(0)))
 
+
+        re_rec_item, re_rec_index = dy_model.forward(user_embedding=user_embedding, bs_item_list=item_list, re_infer=True) # all paths for the user_embedding
+
         return metrics_list, None
+
+
+                # # user---..paths---....items
+                # [user:[item1,item2...]]
+                # [user_embedding; item_embedding]
+

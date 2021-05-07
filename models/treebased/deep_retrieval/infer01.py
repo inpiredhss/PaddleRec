@@ -25,6 +25,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# copied from train.py in cur_path;
+
 import paddle
 import os
 import paddle.nn as nn
@@ -217,10 +219,8 @@ def main(args):
             for key in dict:
                 print(key,"------>",dict[key])
 
-            # flowing parts should be moved to infer.py when rerank is over 
             # tip: "dy_model_class.graph_index._graph.get_item_of_path" has same effect as "dy_model_class.graph_index.get_item_of_path"
             # test_demo: get items of certain path; we set items on the paths, and test whether we can get items from those paths
-            
             test_paths01=dy_model_class.graph_index._graph.get_item_of_path([434, 418, 387, 131, 419, 386, 475, 439])
             print("==========01", len(test_paths01))
             for path_item in test_paths01:

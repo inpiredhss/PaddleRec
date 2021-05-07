@@ -59,7 +59,8 @@ class DygraphModel():
 
         init_model_path = config.get("model_init_path")
         if init_model_path == None:
-            self.graph_index._init_by_random()#self.item_input_file, self.item_output_proto)
+             self.graph_index._init_by_random(self.item_input_file, self.item_output_proto)
+	   #  self.graph_index._init_by_random()#self.item_input_file, self.item_output_proto)
         else:
              self.graph_index._init_graph(os.path.join(init_model_path, self.path_save_file_name))
         self.use_multi_task_learning = config.get("hyper_parameters.use_multi_task_learning")
@@ -75,6 +76,7 @@ class DygraphModel():
 
     # define feeds which convert numpy of batch data to paddle.tensor
     def create_feeds(self, batch_data, config):
+        print("*********************************")
         user_embedding = paddle.to_tensor(batch_data[0].numpy().astype(
             'float32').reshape(-1, self.user_embedding_size))
         print("user_embedding: {}".format(user_embedding))
@@ -88,19 +90,20 @@ class DygraphModel():
         multi_task_neg_label = []
         for i in item_id_List:
             item_path_id.append(self.graph_index.get_path_of_item(i[0])) # 
+            print("item_path_id:".format(item_path_id))
             if self.use_multi_task_learning:
                 multi_task_pos_label.append(i[0])
                 multi_task_neg_label.append(i[1])
-        print("item_id_sample: {}".format(i))
-        print("multi_task_pos_label: {}".format(multi_task_pos_label))
-        print("multi_task_neg_label: {}".format(multi_task_neg_label))
+        # print("item_id_sample: {}".format(i))
+        # print("multi_task_pos_label: {}".format(multi_task_pos_label))
+        # print("multi_task_neg_label: {}".format(multi_task_neg_label))
 
         item_path_kd_label = []
-        print("item_path_id: {}".format(item_path_id))
+        # print("item_path_id: {}".format(item_path_id))
 
         # for every example
         for item_path in item_path_id:
-            print("item_path:{}".format(item_path))
+            # print("item_path:{}".format(item_path))
             item_kd_represent = []
             # for every path choice of item
             for item_path_j in item_path[0]:
@@ -113,9 +116,11 @@ class DygraphModel():
                 print("item_kd_represent: {}".format(item_kd_represent))
 
             item_path_kd_label.append(item_kd_represent)
-        print("item_path_kd_label: {}".format(item_path_kd_label))
+        # print("item_path_kd_label: {}".format(item_path_kd_label))
         if self.use_multi_task_learning:
+            # print("if_multi_task_neg_label:{}".format(multi_task_neg_label))
             return user_embedding, item_path_kd_label, multi_task_pos_label ,   multi_task_neg_label
+        # print("elif_multi_task_neg_label:{}".format(multi_task_neg_label))
         return user_embedding, item_path_kd_label, multi_task_pos_label ,   multi_task_neg_label
 
     def create_infer_feeds(self, batch_data, config):
@@ -153,11 +158,10 @@ class DygraphModel():
 
     # construct train forward phase
     def train_forward(self, dy_model, metrics_list, batch_data, config):
-        user_embedding, item_path_kd_label,multi_task_pos_label,multi_task_neg_label = self.create_feeds(batch_data,
-                                                               config)
-
+        user_embedding, item_path_kd_label,multi_task_pos_label,multi_task_neg_label = self.create_feeds(batch_data, config)
+        print("train_forward_multi_task_neg_label:{}".format(multi_task_neg_label))
         path_prob,multi_task_loss = dy_model.forward(
-            user_embedding, item_path_kd_label,multi_task_pos_label,multi_task_neg_label)
+            user_embedding, item_path_kd_label = item_path_kd_label, multi_task_positive_labels=multi_task_pos_label,multi_task_negative_labels = multi_task_neg_label)
 
         loss = self.create_loss(path_prob,multi_task_loss)
 
@@ -178,6 +182,7 @@ class DygraphModel():
         # item = 0
         em_dict[0] = []
         for batch_idx, batch in enumerate(kd_path_list):
+            batch_item_list = []
             print("batch: {}".format(batch))
             # itemLists=[]
             for path_idx, path in enumerate(batch):  # all path in the 
@@ -189,9 +194,22 @@ class DygraphModel():
                 path_item_ids = self.graph_index.get_item_of_path(path_id)
                 # itemLists=itemLists.append(path_item_ids)
                 print("path_item_ids:",path_item_ids)  # ('path_item_ids:', [[]])
-		for item in path_item_ids[0]:
-		    item_list.append(item)
-		print("item_list:",item_list)          
+            for item in path_item_ids[0]:
+                batch_item_list.append(item)
+            # 'batch_item_list:', [20, 19, 10, 11]     
+            # 'batch_item_list:', [16, 13]
+            print("batch_item_list:", batch_item_list)   
+            item_list.append(batch_item_list)
+        #  'item_list', [[20, 19, 10, 11], [16, 13]]
+        print("item_list",item_list)
+
+        # # test_demo for infer.py:
+        # path_id_list = [434, 418, 387, 131, 419, 386, 475, 439]
+        # item_list_0=[]
+        # for path_id in path_id_list:
+        #     path_item_ids = self.graph_index.get_item_of_path(path_id) 
+        #     for item_back in path_item_ids:
+        #         print(item_back, "get items on path-----", path_id)
 
             # mul_infer_forward(user_embedding, path_item_ids)        
 

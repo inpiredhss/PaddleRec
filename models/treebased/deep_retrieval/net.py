@@ -37,7 +37,7 @@ class DeepRetrieval(nn.Layer):
         print("in_sizes: {}".format(in_sizes))
 
         # out_sizes: [height, height, height]     #[4,4,4]
-        out_sizes = [self.height] * self.width
+        out_sizes = [self.height] * self.width    #
         print("out_sizes: {}".format(out_sizes))
 
         self.use_multi_task_learning = use_multi_task_learning
@@ -100,9 +100,9 @@ class DeepRetrieval(nn.Layer):
         batch_size = input_embeddings.shape[0]
         prob_list = []
         saved_path = None
-        print("width ------------= ",self.width)
+        # print("width ------------= ",self.width)
         for i in range(self.width):
-            print("-------",i)
+            # print("-------",i)
             if i == 0:
                 # [batch, height]
                 pro = F.softmax(self.mlp_layers[0](input_embeddings))
@@ -122,8 +122,8 @@ class DeepRetrieval(nn.Layer):
                 input_embeddings = paddle.unsqueeze(input_embeddings,1)
                 # [batch,beam,emb_size]
                 input_embeddings = paddle.expand(input_embeddings, [batch_size, beam_size, self.user_embedding_size])
-                print("first loop ends",i)
-                print(self.width)
+                # print("first loop ends",i)
+                # print(self.width)
             else:
                 #[beam, i]
                 reverse_saved_path = paddle.transpose(saved_path,[1,0])
@@ -172,13 +172,14 @@ class DeepRetrieval(nn.Layer):
             # [beam]
         final_prob = paddle.sum(final_prob, axis=0)
 
-        print("saved_path",saved_path)
-        print("final_prob",final_prob)
+        # print("saved_path",saved_path)
+        # print("final_prob",final_prob)
         return saved_path, final_prob
 
 
     def forward(self, user_embedding, item_path_kd_label=None, bs_item_list = [], multi_task_positive_labels = None,multi_task_negative_labels = None, is_infer=False, re_infer=False):
-	print("bs_item_list:{}".format(bs_item_list))
+        print("multi_task_negative_labels:{}".format(multi_task_negative_labels))
+	    # print("bs_item_list:{}".format(bs_item_list))
         def expand_layer(input, n):
             # expand input (batch_size, shape) -> (batch_size * n, shape)
             input = paddle.unsqueeze(
@@ -194,24 +195,24 @@ class DeepRetrieval(nn.Layer):
 
         def train_forward():
             # item_path_kd_label: list [ list[ (1, D), ..., (1, D) ],..., ]
-            print("item_path_kd_label: {}".format(item_path_kd_label))
+            # print("item_path_kd_label: {}".format(item_path_kd_label))
             kd_label_list = []
             for idx, all_kd_val in enumerate(item_path_kd_label):
                 kd_label_list.append(paddle.concat(
                     all_kd_val, axis=0))  # (J, D)
-            print("kd_label_list: {}".format(kd_label_list))
+            # print("kd_label_list: {}".format(kd_label_list))
             kd_label = paddle.concat(
                 kd_label_list, axis=0)  # (batch_size * J, D)
-            print("kd_label: {}".format(kd_label))
+            # print("kd_label: {}".format(kd_label))
             # find path emb idx for every item
             path_emb_idx_lists = []
             for idx in range(self.width):
                 cur_path_emb_idx = paddle.slice(
                     kd_label, axes=[1], starts=[idx], ends=[idx+1])  # (batch_size * J, 1)
                 path_emb_idx_lists.append(cur_path_emb_idx)
-            print("cur_path_emb_idx: {}".format(cur_path_emb_idx))
-            print("path_emb_idx_lists: {}".format(path_emb_idx_lists))
-            print("item_path_kd_label====kd_label_list====kd_label=====cur_path_emb_idx=====path_emb_idx_lists")
+            # print("cur_path_emb_idx: {}".format(cur_path_emb_idx))
+            # print("path_emb_idx_lists: {}".format(path_emb_idx_lists))
+            # print("item_path_kd_label====kd_label_list====kd_label=====cur_path_emb_idx=====path_emb_idx_lists")
 
             # Lookup table path emb
             # The main purpose of two-step table lookup is for distributed PS training
@@ -222,11 +223,11 @@ class DeepRetrieval(nn.Layer):
                 path_emb.append(emb)
 
             # expand user_embedding (batch_size, emb_shape) -> (batch_size * J, emb_shape)
-            print("user_embedding: {}".format(user_embedding))
+            # print("user_embedding: {}".format(user_embedding))
             input_embedding = expand_layer(
-                user_embedding, self.item_path_volume)   # item_path_volume: 4
-            print("input_embedding: {}".format(input_embedding))
-            print("input_embedding <===> user_embedding * item_path_volume")
+                user_embedding, self.item_path_volume)   # item_path_volume: 10  # 4
+            # print("input_embedding: {}".format(input_embedding))
+            # print("input_embedding <===> user_embedding * item_path_volume")
             print("data ready")
             # calc prob of every layer
             path_prob_list = []
@@ -243,16 +244,16 @@ class DeepRetrieval(nn.Layer):
                             path_emb[j], (-1, self.user_embedding_size)))
                     # print("cur_input_list: {}".format(cur_input_list))  # cur_input_list: [Tensor(shape=[10, 2],Tensor...]
                     cur_input = paddle.concat(cur_input_list, axis=1)  # Tensor(shape=[10, 6])     <==>   Tensor(shape=[10, 2]) * width=3
-                    # print("cur_input: {}".format(cur_input))
-                print("cur_input: {}".format(cur_input))   # cur_input: Tensor(shape=[10, 4])
-                print("cur_input —— cur_input_list")
+                #     print("cur_input: {}".format(cur_input))
+                # print("cur_input: {}".format(cur_input))   # cur_input: Tensor(shape=[10, 4])
+                # print("cur_input —— cur_input_list")
                 layer_prob = F.softmax(self.mlp_layers[i](cur_input))  # cur_input: 
-                print("layer_prob: {}".format(layer_prob))     # layer_prob:  shape=[10, 4]
-                print("path_emb_idx_lists[i]: {}".format(path_emb_idx_lists[i]))  # path_emb_idx_lists[i]: Tensor(shape=[8, 1])
-                print("path_emb_idx_lists: {}".format(path_emb_idx_lists)) 
+                # print("layer_prob: {}".format(layer_prob))     # layer_prob:  [20, 16]   #shape=[10, 4]
+                # print("path_emb_idx_lists[i]: {}".format(path_emb_idx_lists[i]))  # path_emb_idx_lists[i]: Tensor(shape=[8, 1])
+                # print("path_emb_idx_lists: {}".format(path_emb_idx_lists)) 
 
                 cur_path_prob = paddle.index_sample(    
-                    layer_prob, path_emb_idx_lists[i])                     #[8,4];[6,1]
+                    layer_prob, path_emb_idx_lists[i])                    #[8,4];[6,1]
                     # layer_prob  （batch_size* J, height） 
                     # path_emb_idx_lists[i]
                     # (batch_size * J, 1)
@@ -268,18 +269,23 @@ class DeepRetrieval(nn.Layer):
                 for i in range(len(self.multi_task_mlp_layers)):
                    temp = self.multi_task_mlp_layers[i](temp)
                 
+                #(batch,1)  temp  [2,128]
+                print("temp:{}".format(temp))
                 # (batch, dot_prodcut_size)
-		print("multi_task_negative_labels:",multi_task_negative_labels)
-		print("multi_task_positive_labels:",multi_task_positive_labels)
+                # multi_task_negative_labels   [2]   list
+                print("multi_task_negative_labels:{}".format(multi_task_negative_labels))
+                print("multi_task_positive_labels:{}".format(multi_task_positive_labels))
                 pos_item_embedding = self.multi_task_item_embedding(paddle.to_tensor(multi_task_positive_labels))
                 neg_item_embedding = self.multi_task_item_embedding(paddle.to_tensor(multi_task_negative_labels))
-		print("pos_item_embedding:",pos_item_embedding)
-		print("neg_item_embedding:",neg_item_embedding)
-                #(batch,1)
+                # pos_item_embedding [2,128]
+                print("pos_item_embedding:{}".format(pos_item_embedding))
+                # neg_item_embedding [2,128]
+                print("neg_item_embedding:{}".format(neg_item_embedding))
+
+                # [2,128]  *  [2,128]
                 pos = paddle.dot(temp, pos_item_embedding)
                 neg = paddle.dot(temp, neg_item_embedding)
                 neg = paddle.clip(x=neg,min=-15,max=15)
-
 
                 pos = paddle.log(paddle.nn.functional.sigmoid(pos))
                 neg = paddle.log(1 - paddle.nn.functional.sigmoid(neg))
@@ -294,7 +300,7 @@ class DeepRetrieval(nn.Layer):
 
             height = paddle.full(
                 shape=[1, 1], fill_value=self.height, dtype='int64')
-            print("height: {}".format(height))
+            # print("height: {}".format(height))
 
 
             prev_index = []
@@ -308,19 +314,19 @@ class DeepRetrieval(nn.Layer):
                     tmp_output = F.softmax(self.mlp_layers[i](user_embedding))
                     # assert beam_search_num < height
                     # [batch, B]
-                    print("tmp_output0: {}".format(tmp_output))
-                    print("beam_search_num0: {}".format(self.beam_search_num))
+                    # print("tmp_output0: {}".format(tmp_output))
+                    # print("beam_search_num0: {}".format(self.beam_search_num))
                     prob, index = paddle.topk(
                         tmp_output, self.beam_search_num)
                     path_prob.append(prob)
-                    print("path_prob0: {}".format(path_prob))
+                    # print("path_prob0: {}".format(path_prob))
 
                     # expand user_embedding (batch_size, emb_shape) -> (batch_size * B, emb_shape)
                     input_embedding = expand_layer(
                         user_embedding, self.beam_search_num)
-                    print("input_embedding0: {}".format(input_embedding)) 
+                    # print("input_embedding0: {}".format(input_embedding)) 
                     prev_index.append(index)
-                    print("fist prev_index0: {}".format(prev_index))
+                    # print("fist prev_index0: {}".format(prev_index))
 
                 else:
                     # other layer, use user embedding + path_embedding
@@ -332,9 +338,9 @@ class DeepRetrieval(nn.Layer):
                         emb = self.path_embedding(prev_index[j])
                         # [batch*beam,emb_size]
                         emb = paddle.reshape(emb, [-1,self.user_embedding_size])
-                        print("emb_shape",emb.shape)
+                        # print("emb_shape",emb.shape)
                         input = paddle.concat([input,emb],axis=1)
-                        print("input shape",input.shape)
+                        # print("input shape",input.shape)
 
                     # (batch_size * B, K)
                     #tmp_output = F.softmax(self.mlp_layers[i](cur_layer_input))
@@ -348,10 +354,10 @@ class DeepRetrieval(nn.Layer):
                     #path_prob.append(prob)
 
                     # prev_index of B
-                    print("index: {}".format(index))
+                    # print("index: {}".format(index))
                     prev_top_index = paddle.floor_divide(
                         index, height)
-                    print("prev_top_index: {}".format(prev_top_index))
+                    # print("prev_top_index: {}".format(prev_top_index))
                     for j in range(len(prev_index)):  #
                         prev_index[j] = paddle.index_sample(prev_index[j],prev_top_index)
                         path_prob[j] = paddle.index_sample(path_prob[j], prev_top_index)
@@ -359,9 +365,7 @@ class DeepRetrieval(nn.Layer):
                     cur_top_abs_index = paddle.mod(
                         index, height)
                     prev_index.append(cur_top_abs_index)
-                    print("cur_top_abs_index: {}".format(cur_top_abs_index))
-
-
+                    # print("cur_top_abs_index: {}".format(cur_top_abs_index))
 
             final_prob = path_prob[0]
             for i in range(1,len(path_prob)):
@@ -373,8 +377,8 @@ class DeepRetrieval(nn.Layer):
             # [batch,beam,width],[batch,beam]
             kd_path = paddle.concat(prev_index,axis=-1)
 
-            print("kd_path",kd_path)
-            print("final_prob",final_prob)
+            # print("kd_path",kd_path)
+            # print("final_prob",final_prob)
             return kd_path, final_prob
 
             # user_embedding01-->net-->user_embedding02-->itemEmbWeight
@@ -382,26 +386,94 @@ class DeepRetrieval(nn.Layer):
             # final_prob 
 
         def mul_infer_forward():
-	    print("re_infer",re_infer)
-	    print("bs_item_list",bs_item_list)
-            temp = user_embedding
+	        # print("re_infer",re_infer)
+	        # print("bs_item_list",bs_item_list)
+            layer_embedding = user_embedding   
+            # batch_size = len(user_embedding[0])                                                             
             # (batch, dot_product_size)
             for i in range(len(self.multi_task_mlp_layers)):
-                temp = self.multi_task_mlp_layers[i](temp)
+                layer_embedding = self.multi_task_mlp_layers[i](layer_embedding)
+            # user_pros={userEmb: [(itemId,pro),(item,pro),...]}
+            user_pros={}
+            for batch_index in range(len(bs_item_list)):
+                batch_layer_embedding=layer_embedding[batch_index]  # user_embedding in a batch index   
+                batch_user_embedding=user_embedding[batch_index]             
+                user_pros[batch_user_embedding]=[]
+                
+                for rec_item_index in range(1,len(bs_item_list[batch_index])):  # item_index
+                    print(bs_item_list[batch_index][rec_item_index])
+                    item_tensor = paddle.to_tensor(bs_item_list[batch_index][rec_item_index])
+                    bs_item_embedding = self.multi_task_item_embedding(item_tensor)
+                    # bs_item_embedding = paddle.concat(bs_item_embedding, )
+                    # print("batch_layer_embedding",batch_layer_embedding)
+                    # print("bs_item_embedding",bs_item_embedding[0])
+                    pro_item = paddle.dot(batch_layer_embedding,bs_item_embedding[0])
+                    # use_item_pro;
+                    print("pro_item",pro_item)
+                    print("pro_item_numpy",pro_item.numpy()[0])
+                    user_pros[batch_user_embedding].append([bs_item_list[batch_index][rec_item_index] , pro_item.numpy()[0]])
+                    print("user_pros",user_pros)
+                    print("rec_result",user_pros[batch_user_embedding])
+                user_pros[batch_user_embedding].sort(reverse=True, key = lambda x: x[1])
+                print(user_pros[batch_user_embedding])
+                print(user_pros)
+            print(user_pros)
+            return user_pros
+    #    {  Tensor(shape=[2], dtype=float32, place=CPUPlace, stop_gradient=True,
+    #           [0.36140999, 0.02512000]): [], 
+    #       Tensor(shape=[2], dtype=float32, place=CPUPlace, stop_gradient=True,
+    #           [0.12523000, 0.31525001]): [[10, 10.810221], [9, 6.3761997]]}
 
-            print("user_embedding",user_embedding)
-            print("temp",temp)
-	    print("bs_item_list",bs_item_list)
-            bs_items_embedding = self.multi_task_item_embedding(paddle.to_tensor(bs_item_list))
-            print("bs_items_embedding",bs_items_embedding)
-            #(batch,1)
-            pos_pros=paddle.dot(temp, bs_items_embedding)  
-            print("pos_pros",pos_pros)
-            # logPros = paddle.log(paddle.nn.functional.sigmoid(posPros))
-            topk_Pros, indices_topk_posPros = paddle.topk(pos_pros)    
-            print("topk_Pros",topk_Pros)
-            print("indices_topk_posPros",indices_topk_posPros)
-            return topk_Pros, indices_topk_posPros
+                
+
+            #     batch_layer_embedding_exp=paddle.expand(layer_embedding[batch_index], shape=[layer_emb_squ.shape[0], item_emb.shape[1], layer_emb_squ.shape[2]])
+            #     print("batch_layer_embedding_exp",batch_layer_embedding_exp)
+            #     print("batch_layer_embedding",layer_embedding[batch_index])
+            #     print("batch_bs_item_list",bs_item_list[batch_index])
+
+            #     # print("")
+            
+            
+            # # #[2,2]   --   user_embedding   -- [bachSize, embeddingSize]  
+            # # print("user_embedding",user_embedding)
+            # # #[2,128] --   temp     
+            # # print("layer_embedding",layer_embedding)
+            # print("bs_item_list",bs_item_list)
+            # bs_item_emb = paddle.to_tensor(bs_item_list)
+            # bs_items_embedding = self.multi_task_item_embedding(bs_item_emb)
+            # print("bs_items_embedding",bs_items_embedding)
+            # # # layer_emb_squ = paddle.unsqueeze(layer_embedding, axis=1)
+            # user_emb_exp = paddle.expand_as(layer_embedding, bs_items_embedding)
+            # print("user_emb_exp",user_emb_exp)
+            # # user_emb_exp = paddle.expand(layer_emb_squ, shape=[layer_emb_squ.shape[0], item_emb.shape[1], layer_emb_squ.shape[2]])
+            # # input = paddle.reshape(layer_embedding, (item_emb.shape[1] * layer_embedding.shape[0], input.shape[2]))
+
+            # layer_embedding_all = layer_embedding[0] * len(bs_item_list[0]) 
+            # # print("layer_embedding_all",layer_embedding_all)
+            # user_emb_squ = paddle.unsqueeze(user_emb, axis=1)
+            # user_emb_exp = paddle.expand(user_emb_squ, shape=[user_emb_squ.shape[0], item_emb.shape[1], user_emb_squ.shape[2]])
+            # [recall_len_01, recall_len_02] list
+            # print("bs_item_list",bs_item_list)
+            # bs_item_emb = paddle.to_tensor(bs_item_list)
+            # # [recall_len_01, recall_len_02] tensor
+            # print("bs_items_emb",bs_item_emb)
+            # bs_item_emb_all=bs_item_emb[0].expand(bs_item_emb[1])
+            # print("bs_item_emb_all:", bs_item_emb_all)
+            # bs_items_embedding = self.multi_task_item_embedding(bs_item_emb_all)   # [10,128]
+            # # [recall_len_01 + recall_len_02,128] tensor
+            # print("bs_items_embedding",bs_items_embedding)
+            # #(batch,1)
+            # # bs_items_embedding_batch = bs_items_embedding[:2]
+            # item_cnt=len(bs_items_embedding[0])
+            # for 
+            # print("bs_items_embedding_batch:{}".format(bs_items_embedding_batch))
+            # pos_pros=paddle.dot(layer_embedding, bs_items_embedding_batch)  
+            # print("pos_pros",pos_pros)
+            # # logPros = paddle.log(paddle.nn.functional.sigmoid(posPros))
+            # topk_Pros, indices_topk_posPros = paddle.topk(pos_pros)    
+            # print("topk_Pros",topk_Pros)
+            # print("indices_topk_posPros",indices_topk_posPros)
+            # return topk_Pros, indices_topk_posPros
             
 
         if is_infer:

@@ -44,6 +44,8 @@ class DygraphModel():
 
     # define feeds which convert numpy of batch data to paddle.tensor
     def create_feeds(self, batch, config):
+        # for bat in batch:
+        #     print("----create_feeds_batch----",bat.shape)
         hist_item_seq = batch[0]
         hist_cat_seq = batch[1]
         target_item = batch[2]
@@ -56,13 +58,22 @@ class DygraphModel():
         return hist_item_seq, hist_cat_seq, target_item, target_cat, label, mask, target_item_seq, target_cat_seq
 
     # define loss function by predicts and label
-    def create_loss(self, raw_pred, label):
-        cost = paddle.nn.functional.cross_entropy(
-            input=raw_pred,
-            label=paddle.cast(label, "float32"),
-            soft_label=True)
+    def create_loss(self, pred, label):
+        cost = paddle.nn.functional.log_loss(
+            input=pred, label=paddle.cast(
+                label, dtype="float32"))
         avg_cost = paddle.mean(x=cost)
+        # print("-------mean_log_loss------",avg_cost)
         return avg_cost
+
+    ## define loss function by predicts and label
+    #def create_loss(self, raw_pred, label):
+    #    cost = paddle.nn.functional.cross_entropy(
+    #        input=raw_pred,
+    #        label=paddle.cast(label, "float32"),
+    #        soft_label=True)
+    #    avg_cost = paddle.mean(x=cost)
+    #    return avg_cost
 
     # define optimizer
     def create_optimizer(self, dy_model, config):
@@ -85,27 +96,37 @@ class DygraphModel():
     def train_forward(self, dy_model, metrics_list, batch_data, config):
         hist_item_seq, hist_cat_seq, target_item, target_cat, label, mask, target_item_seq, target_cat_seq = self.create_feeds(
             batch_data, config)
-
-        raw = dy_model(hist_item_seq, hist_cat_seq, target_item, target_cat,
+        print("----label----",label)
+        ave_loss,pred = dy_model(hist_item_seq, hist_cat_seq, target_item, target_cat,
                        label, mask, target_item_seq, target_cat_seq)
+        print("-------pred-------",pred)
+        print("-----ave_loss------",ave_loss)
+        loss = self.create_loss(pred, label)
+        print("-----log_loss------",loss)
+        # print("-------mean_log_loss------",loss)
+        # update metrics
+        predict_2d = paddle.concat(x=[1 - pred, pred], axis=1)
+        # print("-------predict_2d-----",predict_2d)
+        metrics_list[0].update(preds=predict_2d.numpy(), labels=label.numpy())
+        # print("------metrics_list-----",metrics_list)
 
-        loss = paddle.nn.functional.cross_entropy(
-            input=raw, label=paddle.cast(label, "float32"), soft_label=True)
+        #loss = paddle.nn.functional.cross_entropy(
+        #    input=raw, label=paddle.cast(label, "float32"), soft_label=True)
 
-        scaled = raw.numpy()
-        scaled_pre = []
-        [rows, cols] = scaled.shape
-        for i in range(rows):
-            for j in range(cols):
-                scaled_pre.append(1.0 - self.rescale(scaled[i, j]))
-                scaled_pre.append(self.rescale(scaled[i, j]))
-        scaled_np_predict = np.array(scaled_pre).reshape([-1, 2])
-        metrics_list[0].update(scaled_np_predict,
-                               paddle.reshape(label, [-1, 1]))
+        #scaled = raw.numpy()
+        #scaled_pre = []
+        #[rows, cols] = scaled.shape
+        #for i in range(rows):
+        #    for j in range(cols):
+        #        scaled_pre.append(1.0 - self.rescale(scaled[i, j]))
+        #        scaled_pre.append(self.rescale(scaled[i, j]))
+        #scaled_np_predict = np.array(scaled_pre).reshape([-1, 2])
+        #metrics_list[0].update(scaled_np_predict,
+        #                       paddle.reshape(label, [-1, 1]))
 
-        loss = paddle.mean(loss)
+        #loss = paddle.mean(loss)
         print_dict = None
-        return loss, metrics_list, print_dict
+        return ave_loss, metrics_list, print_dict
 
     def infer_forward(self, dy_model, metrics_list, batch_data, config):
         hist_item_seq, hist_cat_seq, target_item, target_cat, label, mask, target_item_seq, target_cat_seq = self.create_feeds(

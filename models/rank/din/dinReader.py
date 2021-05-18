@@ -1,4 +1,4 @@
-#   Copyright (c) 2020 PaddlePaddle Authors. All Rights Reserved.
+# Copyright (c) 2020 PaddlePaddle Authors. All Rights Reserved.
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ class RecDataset(IterableDataset):
                     res0.append([hist, cate, line[2], line[3], float(line[4])])
 
         data_set = res0
-        random.shuffle(data_set)
+        # random.shuffle(data_set)
 
         reader, batch_size, group_size = data_set, self.batch_size, self.group_size
         bg = []
@@ -88,7 +88,7 @@ class RecDataset(IterableDataset):
                     target_cat_seq = np.array(
                         [[x[3]] * max_len for x in b]).astype("int64").reshape(
                             [-1, max_len])
-
+                    res_batch=[]
                     for i in range(len(b)):
                         res = []
                         res.append(np.array(item[i]))
@@ -99,7 +99,12 @@ class RecDataset(IterableDataset):
                         res.append(np.array(mask[i]).astype('int64'))
                         res.append(np.array(target_item_seq[i]))
                         res.append(np.array(target_cat_seq[i]))
+                        # print("--------yield_batch-----------")
+                        # print("res_batch",res)
                         yield res
+                        # res_batch.append(res)
+
+                    # yield res_batch
 
         len_bg = len(bg)
         if len_bg != 0:
@@ -130,7 +135,7 @@ class RecDataset(IterableDataset):
                 target_cat_seq = np.array(
                     [[x[3]] * max_len for x in b]).astype("int64").reshape(
                         [-1, max_len])
-
+                res_batch=[]
                 for i in range(len(b)):
                     res = []
                     res.append(np.array(item[i]))
@@ -141,4 +146,10 @@ class RecDataset(IterableDataset):
                     res.append(np.array(mask[i]).astype('int64'))
                     res.append(np.array(target_item_seq[i]))
                     res.append(np.array(target_cat_seq[i]))
+                    # res_batch.append(res)
+                    # print("--------yield_batch-----------")
+                    # print("res_batch",res)
                     yield res
+                # print("--------yield_batch-----------")
+                # print("res_batch",res_batch)
+                # yield res_batch

@@ -105,6 +105,8 @@ def main(args):
         reader_start = time.time()
 
         for batch_id, batch in enumerate(train_dataloader()):
+            if batch_id > 0:
+                break
             train_reader_cost += time.time() - reader_start
             optimizer.clear_grad()
             train_start = time.time()

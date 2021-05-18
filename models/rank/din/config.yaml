@@ -17,8 +17,8 @@ runner:
   train_data_dir: "data/train_data"
   train_reader_path: "dinReader" # importlib format
   use_gpu: False
-  train_batch_size: 10
-  epochs: 20
+  train_batch_size: 4 #10
+  epochs: 10 #20
   print_interval: 2
   #model_init_path: "output_model/0" # init model
   save_checkpoint_interval: 1

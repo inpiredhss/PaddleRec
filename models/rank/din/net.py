@@ -16,12 +16,17 @@ import paddle.nn as nn
 import math
 import paddle.fluid as fluid
 import numpy as np
+import paddle.nn.functional as F
 
 
 class DINLayer(nn.Layer):
     def __init__(self, item_emb_size, cat_emb_size, act, is_sparse,
                  use_DataLoader, item_count, cat_count):
         super(DINLayer, self).__init__()
+
+        # self.item_emb_attr = paddle.ParamAttr(name="item_emb", initializer = fluid.initializer.Constant(value=0.0))
+        # self.cat_emb_attr = paddle.ParamAttr(name="cat_emb", initializer = fluid.initializer.Constant(value=0.0))
+
 
         self.item_emb_size = item_emb_size
         self.cat_emb_size = cat_emb_size
@@ -35,33 +40,39 @@ class DINLayer(nn.Layer):
             self.item_count,
             self.item_emb_size,
             sparse=self.is_sparse,
-            name="item_emb")
+            weight_attr=paddle.ParamAttr(
+                initializer=paddle.nn.initializer.Constant(value=0.0)))
         self.hist_cat_emb_attr = paddle.nn.Embedding(
             self.cat_count,
             self.cat_emb_size,
             sparse=self.is_sparse,
-            name="cat_emb")
+            weight_attr=paddle.ParamAttr(
+                initializer=paddle.nn.initializer.Constant(value=0.0)))
         self.target_item_emb_attr = paddle.nn.Embedding(
             self.item_count,
             self.item_emb_size,
             sparse=self.is_sparse,
-            name="item_emb")
+            weight_attr=paddle.ParamAttr(
+                initializer=paddle.nn.initializer.Constant(value=0.0)))
         self.target_cat_emb_attr = paddle.nn.Embedding(
             self.cat_count,
             self.cat_emb_size,
             sparse=self.is_sparse,
-            name="cat_emb")
+            weight_attr=paddle.ParamAttr(
+                initializer=paddle.nn.initializer.Constant(value=0.0)))
         self.target_item_seq_emb_attr = paddle.nn.Embedding(
             self.item_count,
             self.item_emb_size,
             sparse=self.is_sparse,
-            name="item_emb")
+            weight_attr=paddle.ParamAttr(
+                initializer=paddle.nn.initializer.Constant(value=0.0)))
 
         self.target_cat_seq_emb_attr = paddle.nn.Embedding(
             self.cat_count,
             self.cat_emb_size,
             sparse=self.is_sparse,
-            name="cat_emb")
+            weight_attr=paddle.ParamAttr(
+                initializer=paddle.nn.initializer.Constant(value=0.0)))
 
         self.item_b_attr = paddle.nn.Embedding(
             self.item_count,
@@ -72,25 +83,31 @@ class DINLayer(nn.Layer):
 
         self.attention_layer = []
         sizes = [(self.item_emb_size + self.cat_emb_size) * 4
-                 ] + [80] + [40] + [1]
-        acts = ["relu" for _ in range(len(sizes) - 2)] + [None]
+                 ] + [8] + [4] + [1]
+        acts = ["sigmoid" for _ in range(len(sizes) - 2)] + [None]
 
         for i in range(len(sizes) - 1):
+#            flat_layer = paddle.nn.Flatten(start_axis=1, stop_axis=2)
+#            self.add_sublayer('flat_%d' % i, flat_layer)
+#            self.attention_layer.append(flat_layer)
+            print("out_features",sizes[i + 1])
             linear = paddle.nn.Linear(
-                in_features=sizes[i],
+                in_features=sizes[i], #sizes[i],
                 out_features=sizes[i + 1],
-                weight_attr=paddle.ParamAttr(
-                    initializer=paddle.nn.initializer.Normal(
-                        std=1.0 / math.sqrt(sizes[i]))), )
+                # weight_attr = paddle.framework.ParamAttr(initializer=paddle.nn.initializer.XavierNormal()),
+                # weight_attr = paddle.framework.ParamAttr(
+                #     initializer=paddle.nn.initializer.XavierUniform()),
+                weight_attr=paddle.ParamAttr(initializer=paddle.nn.initializer.Constant(value=1.0)),
+                bias_attr = paddle.ParamAttr(initializer=paddle.nn.initializer.Constant(value=0.0)))
             self.add_sublayer('linear_%d' % i, linear)
             self.attention_layer.append(linear)
-            if acts[i] == 'relu':
-                act = paddle.nn.ReLU()
+            if acts[i] == 'sigmoid':
+                # act = paddle.nn.ReLU()
+                act = paddle.nn.Sigmoid()
                 self.add_sublayer('act_%d' % i, act)
                 self.attention_layer.append(act)
-
+                
         self.con_layer = []
-
         self.firInDim = self.item_emb_size + self.cat_emb_size
         self.firOutDim = self.item_emb_size + self.cat_emb_size
         # num_flatten_dims=1
@@ -107,24 +124,29 @@ class DINLayer(nn.Layer):
         conDim = self.item_emb_size + self.cat_emb_size + self.item_emb_size + self.cat_emb_size
 
         conSizes = [conDim] + [80] + [40] + [1]
-        conActs = ["relu" for _ in range(len(conSizes) - 2)] + [None]
+        conActs = ["sigmoid" for _ in range(len(conSizes) - 2)] + [None]
 
         for i in range(len(conSizes) - 1):
             linear = paddle.nn.Linear(
                 in_features=conSizes[i],
                 out_features=conSizes[i + 1],
-                weight_attr=paddle.ParamAttr(
-                    initializer=paddle.nn.initializer.Normal(
-                        std=1.0 / math.sqrt(conSizes[i]))), )
+                weight_attr=paddle.ParamAttr(initializer=paddle.nn.initializer.Constant(value=1.0)),
+                bias_attr = paddle.ParamAttr(initializer=paddle.nn.initializer.Constant(value=0.0)))
+            
+                # weight_attr=paddle.ParamAttr(
+                #     initializer=paddle.nn.initializer.Normal(
+                #         std=1.0 / math.sqrt(conSizes[i]))), )
             self.add_sublayer('linear_%d' % i, linear)
             self.con_layer.append(linear)
-            if conActs[i] == 'relu':
-                act = paddle.nn.ReLU()
+            if conActs[i] == 'sigmoid':
+                act = paddle.nn.Sigmoid()
                 self.add_sublayer('act_%d' % i, act)
                 self.con_layer.append(act)
 
     def forward(self, hist_item_seq, hist_cat_seq, target_item, target_cat,
                 label, mask, target_item_seq, target_cat_seq):
+        # print("-------hist_item_seq, hist_cat_seq, target_item, target_cat,label, mask, target_item_seq, target_cat_seq-----------")
+        # print(hist_item_seq, hist_cat_seq, target_item, target_cat,label, mask, target_item_seq, target_cat_seq)
         hist_item_emb = self.hist_item_emb_attr(hist_item_seq)
         hist_cat_emb = self.hist_cat_emb_attr(hist_cat_seq)
         target_item_emb = self.target_item_emb_attr(target_item)
@@ -132,10 +154,30 @@ class DINLayer(nn.Layer):
         target_item_seq_emb = self.target_item_seq_emb_attr(target_item_seq)
         target_cat_seq_emb = self.target_cat_seq_emb_attr(target_cat_seq)
         item_b = self.item_b_attr(target_item)
-
+        # print("-------hist_item_emb-----------")
+        # print(hist_item_emb)  
+        # print("-------hist_cat_emb-----------")
+        # print(hist_cat_emb)           
+        # print("-------target_item_emb-----------")
+        # print(target_item_emb)      
+        # print("-------target_cat_emb-----------")
+        # print(target_cat_emb)      
+        # print("-------target_item_seq_emb-----------")
+        # print(target_item_seq_emb)   
+        # print("-------target_cat_seq_emb-----------")
+        # print(target_cat_seq_emb)      
+        # print("-------item_b-----------")
+        # print(item_b)   
+        #                           
         hist_seq_concat = paddle.concat([hist_item_emb, hist_cat_emb], axis=2)
+        # print("-------hist_seq_concat-----------")
+        # print(hist_seq_concat)   
+
         target_seq_concat = paddle.concat(
             [target_item_seq_emb, target_cat_seq_emb], axis=2)
+        # print("-------target_seq_concat-----------")
+        # print(target_seq_concat) 
+
         target_concat = paddle.concat(
             [target_item_emb, target_cat_emb], axis=1)
 
@@ -146,32 +188,56 @@ class DINLayer(nn.Layer):
                 hist_seq_concat * target_seq_concat
             ],
             axis=2)
-
+        # print("-------concat_before_attention_shape-------", concat)
         for attlayer in self.attention_layer:
             concat = attlayer(concat)
+            # print("-------concat_in_attention_shape-------", concat)
+        # print("-------concat_after_attention_shape-------", concat)
+
+            
 
         atten_fc3 = concat + mask
+        # print("-------atten_weight_mask-------", atten_fc3)
         atten_fc3 = paddle.transpose(atten_fc3, perm=[0, 2, 1])
+        # print("-------atten_weight_transpose-------", atten_fc3)
         atten_fc3 = paddle.scale(atten_fc3, scale=self.firInDim**-0.5)
+        # print("-------atten_weight-------", atten_fc3)
         weight = paddle.nn.functional.softmax(atten_fc3)
+        # print("-------atten_weight_softmax-------", weight)
+        # print("-------hist_seq_concat-------", hist_seq_concat)
 
         #[b, 1, row]
         output = paddle.matmul(
             weight,
             hist_seq_concat)  # X's shape: [2, 1, 512],Y's shape: [256, 80]
         #[b,row]
+        # print("-------out_matmul-------", output)
         output = paddle.reshape(output, shape=[0, self.firInDim])
+        print("-------out_reshape-------", output)
 
         for firLayer in self.con_layer[:1]:
             concat = firLayer(output)
+            print("-------con_layer-------", concat)
 
         embedding_concat = paddle.concat([concat, target_concat], axis=1)
 
         for colayer in self.con_layer[1:]:
             embedding_concat = colayer(embedding_concat)
+            print("-------fc-------", embedding_concat)
 
         logit = embedding_concat + item_b
-        return logit
+        print("-------logit-predict-------", logit)
+        print("-------label-------", label)
+        loss = paddle.nn.functional.binary_cross_entropy_with_logits(logit,label)
+        print("-------loss-------", loss)
+        avg_loss = paddle.nn.functional.binary_cross_entropy_with_logits(logit,label, reduction='mean')
+        print("-------avg_loss-------", avg_loss)
+
+        predict = F.sigmoid(logit)
+        return avg_loss, predict
+       # predict = F.sigmoid(logit)
+        # print("-------sigmoid-predict-------", predict)
+        #return predict
 
 
 class StaticDINLayer(nn.Layer):
@@ -228,23 +294,26 @@ class StaticDINLayer(nn.Layer):
             sparse=self.is_sparse,
             weight_attr=paddle.ParamAttr(
                 initializer=paddle.nn.initializer.Constant(value=0.0)))
-
         self.attention_layer = []
         sizes = [(self.item_emb_size + self.cat_emb_size) * 4
                  ] + [80] + [40] + [1]
-        acts = ["relu" for _ in range(len(sizes) - 2)] + [None]
+        acts = ["sigmoid" for _ in range(len(sizes) - 2)] + [None]
 
         for i in range(len(sizes) - 1):
+            flat_layer = paddle.nn.Flatten(start_axis=0, stop_axis=sizes[i]/2)
+            self.add_sublayer('flat_%d' % i, flat_layer)
+            self.attention_layer.append(flat_layer)
             linear = paddle.nn.Linear(
-                in_features=sizes[i],
-                out_features=sizes[i + 1],
-                weight_attr=paddle.ParamAttr(
-                    initializer=paddle.nn.initializer.Normal(
-                        std=1.0 / math.sqrt(sizes[i]))), )
+                in_features=2, #sizes[i],
+                out_features=sizes[i + 1],)
+                # weight_attr=paddle.ParamAttr(
+                #     initializer=paddle.nn.initializer.Normal(
+                #         std=1.0 / math.sqrt(sizes[i]))), )
             self.add_sublayer('linear_%d' % i, linear)
             self.attention_layer.append(linear)
-            if acts[i] == 'relu':
-                act = paddle.nn.ReLU()
+            if acts[i] == 'sigmoid':
+                # act = paddle.nn.ReLU()
+                act = paddle.nn.Sigmoid()
                 self.add_sublayer('act_%d' % i, act)
                 self.attention_layer.append(act)
 
@@ -327,6 +396,7 @@ class StaticDINLayer(nn.Layer):
         weight = paddle.nn.functional.softmax(atten_fc3)
 
         # [b, 1, row]
+
         output = paddle.matmul(
             weight,
             hist_seq_concat)  # X's shape: [2, 1, 512],Y's shape: [256, 80]

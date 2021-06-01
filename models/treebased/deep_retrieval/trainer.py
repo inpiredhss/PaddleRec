@@ -48,6 +48,8 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+        # self.data_format == "amazon_book_behavior":
+
 def create_data_loader1(config, place, graph_index, mode="train"):
     if mode == "train":
         data_dir = config.get("runner.train_data_dir", None)
@@ -80,14 +82,21 @@ def parse_args():
 
 def main(args):
     item_to_user_emb = {};
+    item_to_user_seq = {};
 
     def clear_item_to_user_emb():
         item_to_user_emb = {}
+    def clear_item_to_user_seq():
+        item_to_user_seq = {}
 
     def add_item_to_user_emb(item_id,user_emb):
         if not item_id in item_to_user_emb:
             item_to_user_emb[item_id] = []
         item_to_user_emb[item_id].append(user_emb)
+    def add_item_to_user_seq(item_id,user_seq):
+        if not item_id in item_to_user_seq:
+            item_to_user_seq[item_id] = []
+        item_to_user_seq[item_id].append(user_seq)
 
     paddle.seed(12345)
     # load config
@@ -95,6 +104,7 @@ def main(args):
     dy_model_class = load_dy_model_class(args.abs_dir)
     config["config_abs_dir"] = args.abs_dir
     # tools.vars
+    config.get("",)
     use_gpu = config.get("runner.use_gpu", True)
     train_data_dir = config.get("runner.train_data_dir", None)
     epochs = config.get("runner.epochs", None)
@@ -103,6 +113,8 @@ def main(args):
     model_init_path = config.get("runner.model_init_path", None)
     em_execution_interval = config.get("hyper_parameters.em_execution_interval", 4)
     pernalize_path_to_item_count = config.get("hyper_parameters.pernalize_path_to_item_count", False)
+    data_format = config.get("hyper_parameters.data_format","user_embedding")
+
     logger.info("**************common.configs**********")
     logger.info(
         "use_gpu: {}, train_data_dir: {}, epochs: {}, print_interval: {}, model_save_path: {}".
@@ -114,17 +126,20 @@ def main(args):
 
     print("model prepare")
     dy_model = dy_model_class.create_model(config)
+    # print(dy_model)
 
     print("model done")
     if model_init_path is not None:
         load_model(model_init_path, dy_model)
+        # print("model_loaded:")
 
     # to do : add optimizer function
     optimizer = dy_model_class.create_optimizer(dy_model, config)
+    # print("optimizer",optimizer)
 
     logger.info("read data")
     train_dataloader = create_data_loader1(config=config, place=place, graph_index=dy_model_class.graph_index)
-
+    # print("------train_dataloader---------",train_dataloader)
     last_epoch_id = config.get("last_epoch", -1)
 
     for epoch_id in range(last_epoch_id + 1, epochs):
@@ -139,17 +154,36 @@ def main(args):
         train_run_cost = 0.0
         total_samples = 0
         reader_start = time.time()
+        # self.data_format == "amazon_book_behavior":    
+        # item_seq, cat_seq, item_id, user_embedding,
         record_item_to_user_emb = False
         if (epoch_id + 1) % em_execution_interval == 0:
+            
+            print("----------em_execution_interval---------")
             record_item_to_user_emb = True
             clear_item_to_user_emb()
+            clear_item_to_user_seq()
         for batch_id, batch in enumerate(train_dataloader()):
+            input_seq=[]
+            # print("------batch---------",batch)
             if record_item_to_user_emb:
-                input_emb = batch[1].numpy()
-                item_set = batch[0].numpy()
-                for user_emb,items in zip(input_emb,item_set):
-                    #print("a pair",user_emb, dy_model_class.graph_index.kd_represent_to_path_id(items))
-                    add_item_to_user_emb(items[0],user_emb)
+                print("----------record_item_to_user_emb--------------")
+                if data_format == "user_embedding":
+                    input_emb = batch[3].numpy()
+                    item_set = batch[2].numpy()
+                    for user_emb,items in zip(input_emb,item_set):
+                        print("----------a pair--------------",user_emb, dy_model_class.graph_index.kd_represent_to_path_id(items))
+                        add_item_to_user_emb(items[0],user_emb)
+                elif data_format == "amazon_book_behavior":
+                    input_seq.append(batch[0].numpy())
+                    input_seq.append(batch[1].numpy())
+                    # input_seq = str(batch[0]) + ":" + str(batch[1])
+                    item_set = batch[2].numpy()
+                    for user_seq,items in zip(input_seq,item_set):
+                        print("-------user_seq",user_seq)
+                        print("------seq_items",items)
+                        print("----------a pair--------------",user_seq, dy_model_class.graph_index.kd_represent_to_path_id(items))
+                        add_item_to_user_seq(items[0],user_seq)
 
             train_reader_cost += time.time() - reader_start
             optimizer.clear_grad()
@@ -207,10 +241,17 @@ def main(args):
             dy_model_class.graph_index.reset_graph_mapping()
             item_to_path_map = {}
             item_to_path_score_map = {}
+
             for key in item_to_user_emb:
-                user_emb = item_to_user_emb[key]
-                user_emb = paddle.to_tensor(np.array(user_emb).astype('float32'))
-                path,pro = dy_model.generate_candidate_path_for_item(user_emb,beam_size)
+                if data_format == "amazon_book_behavior":
+                    user_seq = item_to_user_seq[key]
+                    path,pro = dy_model.generate_candidate_path_for_item(None, user_seq, beam_size)   # epoch = 3 ; batchId=0;
+
+                elif data_format == "user_embedding":
+                    user_emb = item_to_user_emb[key]
+                    user_emb = paddle.to_tensor(np.array(user_emb).astype('float32'))
+                    path,pro = dy_model.generate_candidate_path_for_item(user_emb,None,beam_size)   # epoch = 3 ; batchId=0;
+
                 list = []
                 score_list = []
                 path = np.array(path).astype("int32")
@@ -232,16 +273,12 @@ def main(args):
                     item_to_path_map[key] = list
                     item_to_path_score_map[key] = score_list
             if pernalize_path_to_item_count:
-                #print("in update j path",item_to_path_score_map,item_to_path_score_map)
+                print("in update j path",item_to_path_score_map,item_to_path_score_map)
                 dy_model_class.graph_index.update_Jpath_of_item(item_to_path_map,item_to_path_score_map, 10,0.1)
 
             dict = dy_model_class.graph_index._graph.get_item_path_dict()
             dy_model_class.save_item_path(model_save_path, epoch_id)
             #dy_model.save_item_path(model_save_path, epoch_id):
-
-
-
-
 
 if __name__ == '__main__':
     args = parse_args()

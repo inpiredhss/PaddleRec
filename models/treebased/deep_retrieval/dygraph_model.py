@@ -64,13 +64,25 @@ class DygraphModel():
             self.multi_task_layer_size = config.get("hyper_parameters.multi_task_layer_size")
         else:
             self.multi_task_layer_size = None
-        dr_model = DeepRetrieval(self.width, self.height, self.beam_search_num,
-                                 self.item_path_volume, self.user_embedding_size, self.item_count, self.use_multi_task_learning, self.multi_task_layer_size)
 
+        self.data_format = config.get("hyper_parameters.data_format")
+        self.item_emb_size = config.get("hyper_parameters.item_emb_size")
+        self.cat_emb_size = config.get("hyper_parameters.cat_emb_size")
+        self.cat_count = config.get("hyper_parameters.cat_count")
+        self.item_count = config.get("hyper_parameters.item_count")
+        self.is_sparse = config.get("hyper_parameters.is_sparse")
+
+        dr_model = DeepRetrieval(self.width, self.height, self.beam_search_num,
+                                 self.item_path_volume, self.user_embedding_size, self.item_count, self.data_format, self.item_emb_size,self.cat_emb_size,self.cat_count, 
+                                 self.is_sparse, self.use_multi_task_learning, self.multi_task_layer_size, is_static=False)
+
+        print("--------dr_model-----------",dr_model)
         return dr_model
 
     # define feeds which convert numpy of batch data to paddle.tensor
     def create_feeds(self, batch_data, config):
+        # print("--------batch_data-----------",batch_data)
+
         #print("batch_data ",batch_data, "len_batch_data",len(batch_data))
         # user_embedding = paddle.to_tensor(batch_data[0].numpy().astype(
         #     'float32').reshape(-1, self.user_embedding_size))
@@ -104,21 +116,38 @@ class DygraphModel():
         # #print("label shape ",item_path_kd_label.shape)    
         # item_path_kd_label=paddle.concat(item_path_kd_label, axis = 0)
 
-        
-        if self.use_multi_task_learning:
-            return batch_data[0:5]
+        if self.data_format == "amazon_book_behavior":
+            if self.use_multi_task_learning:
+                item_seq, cat_seq, item_id, item_path_kd_label, mul_label, neg_label, mask = batch_data[0:7]
+                return item_seq, cat_seq, item_id, None, item_path_kd_label, mul_label, neg_label, mask
+            else:
+                item_seq, cat_seq, item_id, item_path_kd_label = batch_data[0:4]
+                mask = batch_data[-1]
+                return item_seq, cat_seq, item_id, None, item_path_kd_label, None, None, mask
+
+        elif self.data_format == "user_embedding":
+            if self.use_multi_task_learning:
+                item_id, user_embedding, item_path_kd_label, mul_label, neg_label = batch_data[0:5]
+                return None, None, item_id, user_embedding, item_path_kd_label, mul_label, neg_label, None
+            else:
+                item_id, user_embedding, item_path_kd_label = batch_data[0:3]
+                return None, None, item_id, user_embedding, item_path_kd_label, None, None, None
         # return batch[0:2]
         #     #return user_embedding, item_path_kd_label, multi_task_pos_label ,   multi_task_neg_label
         #     multi_task_pos_label = paddle.to_tensor(multi_task_pos_label)
         #     multi_task_neg_label = paddle.to_tensor(multi_task_neg_label)
-        item_id, user_embedding, item_path_kd_label = batch_data[0:3]
-        #return user_embedding, item_path_kd_label, multi_task_pos_label ,   multi_task_neg_label
-        return  item_id, user_embedding, item_path_kd_label, None, None
+        # item_id, user_embedding, item_path_kd_label = batch_data[0:3]
+        # #return user_embedding, item_path_kd_label, multi_task_pos_label ,   multi_task_neg_label
+        # return  item_id, user_embedding, item_path_kd_label, None, None
 
     def create_infer_feeds(self, batch_data, config):
-        user_embedding = paddle.to_tensor(batch_data[0].numpy().astype(
-            'float32').reshape(-1, self.user_embedding_size))
-        return user_embedding
+        if self.data_format == "user_embedding":
+            user_embedding = paddle.to_tensor(batch_data[1].numpy().astype(
+                'float32').reshape(-1, self.user_embedding_size))
+            return user_embedding
+        elif self.data_format == "amazon_book_behavior":
+            item_seq, cat_seq = batch_data[0],batch_data[1]
+            return item_seq, cat_seq
 
     # define loss function by predicts and label
     def create_loss(self, path_prob, multi_task_loss):
@@ -150,13 +179,14 @@ class DygraphModel():
 
     # construct train forward phase
     def train_forward(self, dy_model, metrics_list, batch_data, config):
+        # print("------------dynamic_____train_forward------------")
         
-        item_id, user_embedding, item_path_kd_label,multi_task_pos_label,multi_task_neg_label = self.create_feeds(batch_data,
-                                                               config)
+        item_seq, cat_seq, item_id, user_embedding, item_path_kd_label,multi_task_pos_label,multi_task_neg_label, mask = self.create_feeds(batch_data, config)
 
+        print("--------item_seq, cat_seq, item_id, user_embedding,",item_seq, cat_seq, item_id, user_embedding,)
 
         path_prob,multi_task_loss = dy_model.forward(
-            user_embedding,item_path_kd_label,multi_task_pos_label,multi_task_neg_label)
+            item_seq, cat_seq, user_embedding,item_path_kd_label,multi_task_pos_label,multi_task_neg_label, mask, False, False)
 
         loss = self.create_loss(path_prob,multi_task_loss)
 
@@ -164,12 +194,14 @@ class DygraphModel():
         return loss, metrics_list, print_dict
 
     def infer_forward(self, dy_model, metrics_list, batch_data, config):
-        user_embedding = self.create_infer_feeds(batch_data,
-                                                 config)
-
-        kd_path, path_prob = dy_model.forward(user_embedding, is_infer=True)
+        if self.data_format == "user_embedding":
+            user_embedding = self.create_infer_feeds(batch_data,config)
+            kd_path, path_prob = dy_model.forward(user_embedding, is_infer=True)
+        elif self.data_format == "amazon_book_behavior":
+            item_seq, cat_seq = self.create_infer_feeds(batch_data,config)
+            kd_path, path_prob = dy_model.forward(item_seq, cat_seq, is_infer=True)
+        
         kd_path_list = kd_path.numpy().tolist()
-
         em_dict = {}
         # item = 0
         em_dict[0] = []
@@ -177,5 +209,7 @@ class DygraphModel():
             for path_idx, path in enumerate(batch):
                 path_id = self.graph_index.kd_represent_to_path_id(path)
                 # em_dict[0].append("{}:{}".format(path_id, prob))
-
         return metrics_list, None
+
+
+    # def re_infer(self,dy_model,)

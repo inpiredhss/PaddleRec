@@ -16,14 +16,14 @@
 runner:
   #train_data_dir: "train_data"
   #train_reader_path: "fake_reader" # importlib format
-  # train_data_dir: "train_data_emb"
-  # train_reader_path: "static_reader"
-  train_data_dir: "train_data_amazon"
-  train_reader_path: "paper_v1"
+  train_data_dir: "train_data_emb"
+  train_reader_path: "static_reader"
+  # train_data_dir: "train_data_amazon"
+  # train_reader_path: "paper_v1"
   use_gpu: False
   use_auc: False
-  train_batch_size: 32
-  epochs: 10
+  train_batch_size: 2 # 32
+  epochs: 5
   print_interval: 1
   distributed_training: True
   data_partition: True
@@ -49,7 +49,7 @@ hyper_parameters:
   height: 20
   beam_search_num: 5
   item_path_volume: 7
-  user_embedding_size: 128
+  user_embedding_size: 2 #128
   use_multi_task_learning: True
   multi_task_layer_size: [128,128,128]
   pernalize_path_to_item_count: True
@@ -61,7 +61,7 @@ hyper_parameters:
   cat_emb_size: 64
   cat_count: 801
   item_count: 63001
-  data_format: amazon_book_behavior  
-  # data_format: user_embedding
+  # data_format: amazon_book_behavior  
+  data_format: user_embedding
 
   is_sparse: False

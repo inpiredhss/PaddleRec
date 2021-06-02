@@ -18,7 +18,7 @@ import paddle.nn.functional as F
 import math
 import os
 import paddle.fluid as fluid
-
+import numpy as np
 
 class DeepRetrieval(nn.Layer):
 
@@ -173,42 +173,56 @@ class DeepRetrieval(nn.Layer):
     def generate_candidate_path_for_item(self, input_embeddings, beam_size):
         if self.data_format =="user_embedding":
             input_embeddings = input_embeddings   # shape=[2, 2]
+            # print("hhhhh----input_embeddings",input_embeddings)
         elif self.data_format =="amazon_book_behavior":
             # for user_seq in input_embeddings:
             #     item_seq=user_seq[0]
             #     cat_seq=user_seq[-1]
             #     item_emb = paddle.to_tensor(np.array(item_seq).astype('float32'))
             #     cat_emb = paddle.to_tensor(np.array(cat_emb).astype('float32'))
-
+            # print("--------gen-----input_embeddings-----",input_embeddings)
             hist_cat_seq = input_embeddings[-1]
             hist_item_seq = input_embeddings[0]
-            print("---------gen-----hist_item_seq",hist_item_seq)
-            print("---------gen-----hist_cat_seq",hist_cat_seq)
+            # print("---------gen-----hist_item_seq",hist_item_seq)
+            # print("---------gen-----hist_cat_seq",hist_cat_seq)
+            user_embeddings=[]
 
-            item_emb = paddle.to_tensor(np.array(hist_item_seq).astype('float32'))
-            cat_emb = paddle.to_tensor(np.array(hist_cat_seq).astype('float32'))
-            print("---------gen-----hist_item_seq",item_emb)
-            print("---------gen-----hist_cat_seq",cat_emb)
+            for item,cat in zip(hist_item_seq,hist_cat_seq):
+                item_emb_tensor = paddle.to_tensor(item)
+                cat_emb_tensor = paddle.to_tensor(cat)
 
-            hist_item_emb = self.hist_item_emb_attr(hist_item_seq)
-            hist_cat_emb = self.hist_cat_emb_attr(hist_cat_seq)
-            # print("hist_item_emb-------:",hist_item_emb) 
-            # print("hist_cat_emb-------:",hist_cat_emb) 
+            # item_emb_tensor = paddle.to_tensor(np.array(hist_item_seq).astype('int64'))
+            # cat_emb_tensor = paddle.to_tensor(np.array(hist_cat_seq).astype('int64'))
+                # print("---------gen-----item_emb",item_emb_tensor)
+                # print("---------gen-----cat_emb",cat_emb_tensor)
 
-            hist_seq_concat = paddle.concat([hist_item_emb, hist_cat_emb], axis=2)
-            # print("hist_seq_concat",hist_seq_concat)
-            gru_input = hist_seq_concat
-            # print("gru_input-------:",gru_input) 
-            print("---------gen-----self.gru",self.gru)
-            # gru_out, cur_status = self.gru(gru_input,gru_init)   # tensor [1, 2, 2]; tensor [1, 1, 2]
-            gru_out, cur_status = self.gru(gru_input)   # tensor [1, 2, 2]; tensor [1, 1, 2]
-            # print("cur_status",cur_status)
-            # user_embedding_status = paddle.sum(cur_status, axis=0)
-            # print("user_embedding_status", user_embedding_status)
-            # print("gru_out", gru_out)
-            user_embedding = paddle.sum(gru_out, axis=1)
-            print("---------gen-----user_embedding", user_embedding)
-            input_embeddings = user_embedding
+                hist_item_emb = self.hist_item_emb_attr(item_emb_tensor)
+                hist_cat_emb = self.hist_cat_emb_attr(cat_emb_tensor)
+                # print("hist_item_emb-------:",hist_item_emb) 
+                # print("hist_cat_emb-------:",hist_cat_emb) 
+
+                hist_seq_concat = paddle.concat([hist_item_emb, hist_cat_emb], axis=1)
+                # print("hist_seq_concat========",hist_seq_concat)
+                embSize = self.cat_emb_size + self.item_emb_size
+                # print("embSize======",embSize)
+                gru_input = paddle.reshape(hist_seq_concat, [1,-1,128])
+                
+                # print("gru_input-------:",gru_input) 
+                # print("---------gen-----self.gru",self.gru)
+                # gru_out, cur_status = self.gru(gru_input,gru_init)   # tensor [1, 2, 2]; tensor [1, 1, 2]
+                gru_out, cur_status = self.gru(gru_input)   # tensor [1, 2, 2]; tensor [1, 1, 2]
+                # print("cur_status",cur_status)
+                # user_embedding_status = paddle.sum(cur_status, axis=0)
+                # print("user_embedding_status", user_embedding_status)
+                # print("---------gru_out", gru_out)
+                user_embedding = paddle.sum(gru_out, axis=1)
+                # print("---------gen-----user_embedding", user_embedding)
+                user_embeddings.append(user_embedding)
+            # print("---------user_embeddings---------", user_embeddings)
+            input_embeddings = paddle.to_tensor(user_embeddings)
+            # print("---------input_embeddings---------", input_embeddings)
+            input_embeddings = paddle.reshape(input_embeddings,[-1,embSize])
+            # print("---------input_embeddings---------", input_embeddings)
 
         if beam_size > self.height:
             beam_size = self.height
@@ -219,6 +233,7 @@ class DeepRetrieval(nn.Layer):
         prob_list = []
         saved_path = None
         w = []
+        
         row = row = paddle.zeros_like(input_embeddings, dtype="int64")
         row = paddle.sum(row, axis=-1)
         row = paddle.reshape(row, [-1, 1])
@@ -234,12 +249,13 @@ class DeepRetrieval(nn.Layer):
 
 
         for i in range(self.width):
-            print("______________width_loop_______", i)
+            # print("______________width_loop_______", i)
             if i == 0:
                 # [batch, height]
-                print("*************generatePath_input_embeddings*************",input_embeddings)
+                # print("*************generatePath_input_embeddings*************",input_embeddings)
                 fir_mlp = self.mlp_layers[0]
-                print("*************mpl_layer[0]*************",fir_mlp)
+                # print("*************mpl_layer[0]*************",fir_mlp)
+                # print("---------input_embeddings---------", input_embeddings)
                 # site-packages/paddle/fluid/dygraph/layers.py
                 # 
                 pro = F.softmax(self.mlp_layers[0](input_embeddings))
@@ -324,21 +340,21 @@ class DeepRetrieval(nn.Layer):
     def forward(self, hist_item_seq=None, hist_cat_seq=None, user_embedding=None, kd_label=None, multi_task_positive_labels=None,
                 multi_task_negative_labels=None, mask=None, is_infer=False, re_infer=False):
         
-        print("-----+++++-----forward-----+++++--------")
+        # print("-----+++++-----forward-----+++++--------")
 
         if self.data_format =="user_embedding":
             user_embedding = user_embedding   # shape=[2, 2]
         elif self.data_format =="amazon_book_behavior":
-            # print("hist_item_seq",hist_item_seq)
-            # print("hist_cat_seq",hist_cat_seq)
+            # print("--+++++-----forward-----+++++---hist_item_seq",hist_item_seq)
+            # print("--+++++-----forward-----+++++---hist_cat_seq",hist_cat_seq)
             hist_item_emb = self.hist_item_emb_attr(hist_item_seq)
             hist_cat_emb = self.hist_cat_emb_attr(hist_cat_seq)
-            print("hist_item_emb-------:",hist_item_emb) 
-            print("hist_cat_emb-------:",hist_cat_emb) 
+            # print("hist_item_emb-------:",hist_item_emb) 
+            # print("hist_cat_emb-------:",hist_cat_emb) 
 
 
             hist_seq_concat = paddle.concat([hist_item_emb, hist_cat_emb], axis=2)
-            print("hist_seq_concat",hist_seq_concat)
+            # print("hist_seq_concat",hist_seq_concat)
             # print("hist_item_emb",hist_item_emb)
             # print("hist_cat_emb",hist_cat_emb)
             seq_shape = hist_seq_concat.shape
@@ -365,24 +381,24 @@ class DeepRetrieval(nn.Layer):
             # print("mask.shape",mask.shape)
             # mask_hist = paddle.fluid.layers.elementwise_add(hist_seq_concat, mask)
             # hist_mask = gru_soft(hist_seq_concat)
-            print("gru_input-------:",gru_input) 
+            # print("gru_input-------:",gru_input) 
             # gru_init = paddle.randn((2,batchSize,self.user_embedding_size))
             # print("gru_init",gru_init.shape)
-            print("self.gru",self.gru)
+            # print("self.gru",self.gru)
             # gru_out, cur_status = self.gru(gru_input,gru_init)   # tensor [1, 2, 2]; tensor [1, 1, 2]
             gru_out, cur_status = self.gru(gru_input)   # tensor [1, 2, 2]; tensor [1, 1, 2]
-            print("cur_status",cur_status)
+            # print("cur_status",cur_status)
             # user_embedding_status = paddle.sum(cur_status, axis=0)
             # print("user_embedding_status", user_embedding_status)
             # print("gru_out", gru_out)
             user_embedding = paddle.sum(gru_out, axis=1)
-            print("user_embedding", user_embedding)
+            # print("user_embedding", user_embedding)
             
         def train_forward(user_embedding, kd_label=None, multi_task_positive_labels=None,
                           multi_task_negative_labels=None, mask=None):
 
-            print("----------train_forward-------------")
-            print("----------user_embedding", user_embedding)
+            # print("----------train_forward-------------")
+            # print("----------user_embedding", user_embedding)
             # print("----------kd_label", kd_label)
             # print("----------multi_task_positive_labels", multi_task_positive_labels)
             # print("----------multi_task_negative_labels", multi_task_negative_labels)    #  neg_labels: 100*100 ????
@@ -407,7 +423,7 @@ class DeepRetrieval(nn.Layer):
                     path_emb_idx_lists[idx])  # (batch_size * J, 1, emb_shape)
                 path_emb.append(emb)
 
-                print("emb_shape ", emb.shape)
+                # print("emb_shape ", emb.shape)
 
             # expand user_embedding (batch_size, emb_shape) -> (batch_size * J, emb_shape)
 
@@ -416,7 +432,7 @@ class DeepRetrieval(nn.Layer):
 
             # print("user_embedding", user_embedding.shape)
             # print("item_path_volume ", self.item_path_volume)
-            print("input_embedding ", input_embedding.shape)
+            # print("input_embedding ", input_embedding.shape)
             # print("self.expand_layer", self.expand_layer)
 
 
@@ -436,13 +452,13 @@ class DeepRetrieval(nn.Layer):
                             path_emb[j], (-1, self.user_embedding_size)))
                     cur_input = paddle.concat(cur_input_list, axis=1)
 
-                print("---------cur_input",cur_input)
-                print("---------mlp_layers",self.mlp_layers)
+                # print("---------cur_input",cur_input)
+                # print("---------mlp_layers",self.mlp_layers)
                 # print("---------mlp_layers[i]",self.mlp_layers[i])
 
                 layer_prob = F.softmax(self.mlp_layers[i](cur_input))
 
-                print("---------layer_prob",layer_prob)
+                # print("---------layer_prob",layer_prob)
 
                 cur_path_prob = paddle.index_sample(
                     layer_prob, path_emb_idx_lists[i])  # (batch_size * J, 1)
@@ -454,33 +470,33 @@ class DeepRetrieval(nn.Layer):
             multi_task_loss = None
             if self.use_multi_task_learning:
                 temp = user_embedding
-                print("user_embedding",user_embedding)
+                # print("user_embedding",user_embedding)
 
                 # (batch, dot_product_size)
                 for i in range(len(self.multi_task_mlp_layers)):
                     temp = self.multi_task_mlp_layers[i](temp)
-                print("self.multi_task_mlp_layers",self.multi_task_mlp_layers)
-                print("temp",temp)
+                # print("self.multi_task_mlp_layers",self.multi_task_mlp_layers)
+                # print("temp",temp)
 
                 # (batch, dot_product_size)
                 pos_item_embedding = self.multi_task_item_embedding(multi_task_positive_labels)
                 neg_item_embedding = self.multi_task_item_embedding(multi_task_negative_labels)
-                print("---------self.multi_task_item_embedding",self.multi_task_item_embedding)
-                print("---------pos_item_embedding",pos_item_embedding)
-                print("---------neg_item_embedding",neg_item_embedding)
-                print("---------self.dot_product_size",self.dot_product_size)
+                # print("---------self.multi_task_item_embedding",self.multi_task_item_embedding)
+                # print("---------pos_item_embedding",pos_item_embedding)
+                # print("---------neg_item_embedding",neg_item_embedding)
+                # print("---------self.dot_product_size",self.dot_product_size)
 
 
                 pos_item_embedding = paddle.reshape(pos_item_embedding, [-1, self.dot_product_size])
                 neg_item_embedding = paddle.reshape(pos_item_embedding, [-1, self.dot_product_size])
-                print("---------pos_item_embedding",pos_item_embedding)
-                print("---------neg_item_embedding",neg_item_embedding)
+                # print("---------pos_item_embedding",pos_item_embedding)
+                # print("---------neg_item_embedding",neg_item_embedding)
                 # (batch,1)
-                print("------------temp",temp)
+                # print("------------temp",temp)
                 pos = paddle.dot(temp, pos_item_embedding)
                 neg = paddle.dot(temp, neg_item_embedding)
-                print("---------pos",pos)
-                print("---------neg",neg)
+                # print("---------pos",pos)
+                # print("---------neg",neg)
                 neg = paddle.clip(x=neg, min=-15, max=15)
                 # neg = paddle.clip(x=neg, min=-200, max=200)
                 pos = paddle.clip(x=pos, min=-30, max=30)
@@ -492,9 +508,9 @@ class DeepRetrieval(nn.Layer):
                 sum = paddle.concat([pos, neg], axis=1)
                 multi_task_loss = paddle.sum(sum)[0]
                 multi_task_loss = multi_task_loss * -1
-                print("---------log-pos",pos)
-                print("---------log-neg",neg)
-                print("---------multi_task_loss",multi_task_loss)
+                # print("---------log-pos",pos)
+                # print("---------log-neg",neg)
+                # print("---------multi_task_loss",multi_task_loss)
 
             return path_prob, multi_task_loss
 

@@ -81,30 +81,38 @@ def parse_args():
 
 
 def main(args):
-    item_to_user_emb = {};
-    item_to_user_seq = {};
+    item_to_user_emb = {}
+    item_to_user_seq_item = {}
+    item_to_user_seq_cat = {}
 
     def clear_item_to_user_emb():
         item_to_user_emb = {}
-    def clear_item_to_user_seq():
-        item_to_user_seq = {}
+    def clear_item_to_user_seq_item():
+        item_to_user_seq_item = {}
+    def clear_item_to_user_seq_cat():
+        item_to_user_seq_cat = {}
 
     def add_item_to_user_emb(item_id,user_emb):
         if not item_id in item_to_user_emb:
             item_to_user_emb[item_id] = []
         item_to_user_emb[item_id].append(user_emb)
-    def add_item_to_user_seq(item_id,user_seq):
-        if not item_id in item_to_user_seq:
-            item_to_user_seq[item_id] = []
-        item_to_user_seq[item_id].append(user_seq)
+    def add_item_to_user_seq_item(item_id,user_seq_item):
+        if not item_id in item_to_user_seq_item:
+            item_to_user_seq_item[item_id] = []
+        item_to_user_seq_item[item_id].append(user_seq_item)
 
+    def add_item_to_user_seq_cat(item_id,user_seq_cat):
+        # print("------item_to_user_seq_cat",item_to_user_seq_cat)
+        # print("-------")
+        if not item_id in item_to_user_seq_cat:
+            item_to_user_seq_cat[item_id] = []
+        item_to_user_seq_cat[item_id].append(user_seq_cat)
     paddle.seed(12345)
     # load config
     config = load_yaml(args.config_yaml)
     dy_model_class = load_dy_model_class(args.abs_dir)
     config["config_abs_dir"] = args.abs_dir
     # tools.vars
-    config.get("",)
     use_gpu = config.get("runner.use_gpu", True)
     train_data_dir = config.get("runner.train_data_dir", None)
     epochs = config.get("runner.epochs", None)
@@ -159,31 +167,53 @@ def main(args):
         record_item_to_user_emb = False
         if (epoch_id + 1) % em_execution_interval == 0:
             
-            print("----------em_execution_interval---------")
+            # print("----------em_execution_interval---------")
             record_item_to_user_emb = True
             clear_item_to_user_emb()
-            clear_item_to_user_seq()
+            clear_item_to_user_seq_item()
+            clear_item_to_user_seq_cat()
         for batch_id, batch in enumerate(train_dataloader()):
-            input_seq=[]
+            # input_seq=[]
             # print("------batch---------",batch)
             if record_item_to_user_emb:
-                print("----------record_item_to_user_emb--------------")
+                # print("----------record_item_to_user_emb--------------")
                 if data_format == "user_embedding":
-                    input_emb = batch[3].numpy()
-                    item_set = batch[2].numpy()
+                    input_emb = batch[1].numpy()
+                    item_set = batch[0].numpy()
                     for user_emb,items in zip(input_emb,item_set):
-                        print("----------a pair--------------",user_emb, dy_model_class.graph_index.kd_represent_to_path_id(items))
+                        # print("----------a pair--------------",user_emb, dy_model_class.graph_index.kd_represent_to_path_id(items))
+                        # print("======items[0],user_emb",items[0],user_emb)
                         add_item_to_user_emb(items[0],user_emb)
                 elif data_format == "amazon_book_behavior":
-                    input_seq.append(batch[0].numpy())
-                    input_seq.append(batch[1].numpy())
-                    # input_seq = str(batch[0]) + ":" + str(batch[1])
+                    input_seq_item = batch[0].numpy()
+                    input_seq_cat = batch[1].numpy()
                     item_set = batch[2].numpy()
-                    for user_seq,items in zip(input_seq,item_set):
-                        print("-------user_seq",user_seq)
-                        print("------seq_items",items)
-                        print("----------a pair--------------",user_seq, dy_model_class.graph_index.kd_represent_to_path_id(items))
-                        add_item_to_user_seq(items[0],user_seq)
+                    for user_seq_item, items in zip(input_seq_item, item_set):
+                        add_item_to_user_seq_item(items[0], user_seq_item)
+                    for user_seq_cat, items in zip(input_seq_cat, item_set):
+                        add_item_to_user_seq_cat(items[0], user_seq_cat)
+                
+                    # print("----batch------",batch)
+                    # input_seq = ([np.array(batch[0]).astype('int64'), np.array(batch[1]).astype('int64')])
+                    # # input_seq.append(np.array(batch[0]).astype('int64'))
+                    # # input_seq.append(np.array(batch[1]).astype('int64'))
+                    # user_seq = np.array(input_seq).astype('int64')
+
+                    # # # input_seq = np.array([batch[0],batch[1]])
+                    # # # print("----input_seq------",input_seq)
+                    # item_set = batch[2].numpy()
+                    # # # add_item_to_user_seq(item_set[0],input_seq)
+
+                    # # for user_seq,items in zip(input_seq,item_set):
+                    # #     print("-------user_seq",user_seq)
+                    # #     print("------seq_items",items)
+                    # #     # print("----------a pair--------------",user_seq, dy_model_class.graph_index.kd_represent_to_path_id(items))
+                    # #     add_item_to_user_seq(items[0],user_seq)
+
+                    # item_id=np.array(item_set[0]).astype('int64')
+                    # if not item_id in item_to_user_seq:
+                    #     item_to_user_seq[item_id] = []
+                    # item_to_user_seq[item_id].append(user_seq)
 
             train_reader_cost += time.time() - reader_start
             optimizer.clear_grad()
@@ -236,44 +266,77 @@ def main(args):
             dy_model, optimizer, model_save_path, epoch_id, prefix='rec')
 
         if record_item_to_user_emb:
-            print("-------------------------------------",record_item_to_user_emb,"pernalize",pernalize_path_to_item_count)
+            # print("-----------------====--------------------",record_item_to_user_emb,"pernalize",pernalize_path_to_item_count)
             beam_size = dy_model.beam_search_num * 4
             dy_model_class.graph_index.reset_graph_mapping()
             item_to_path_map = {}
             item_to_path_score_map = {}
+            # print("=========item_to_user_seq_item=========",item_to_user_seq_item)
+            # print("=========item_to_user_seq_cat=========",item_to_user_seq_cat)
+            # for key in item_to_user_emb:
+            #     print("===========key=============",key)
+            if data_format == "amazon_book_behavior":
+                for key in item_to_user_seq_item:
+                    user_seq=[]
+                    # print("===========key=============",key)
+                    user_seq_item = item_to_user_seq_item[key]
+                    user_seq_cat = item_to_user_seq_cat[key]
+                    user_seq.append(user_seq_item)
+                    user_seq.append(user_seq_cat)
+                    # print("=======user_seq========",user_seq)
+                    path,pro = dy_model.generate_candidate_path_for_item(user_seq, beam_size)   # epoch = 3 ; batchId=0;
 
-            for key in item_to_user_emb:
-                if data_format == "amazon_book_behavior":
-                    user_seq = item_to_user_seq[key]
-                    path,pro = dy_model.generate_candidate_path_for_item(None, user_seq, beam_size)   # epoch = 3 ; batchId=0;
+                    list = []
+                    score_list = []
+                    path = np.array(path).astype("int32")
+                    pro = np.array(pro).astype("float")
+                    if not pernalize_path_to_item_count:
+                        for single_path,single_pro in zip(path,pro):
+                            list.append((single_pro,single_path))
+                        sorted(list,key=itemgetter(0), reverse=True)
+                        topk = []
+                        for i in range(dy_model_class.item_path_volume):
+                            topk.append(dy_model_class.graph_index.kd_represent_to_path_id(list[i][1]))
 
-                elif data_format == "user_embedding":
+                        topk = np.array(topk).astype("int32")
+                        dy_model_class.graph_index._graph.add_item(key, topk)
+                    else:
+                        for single_path,single_pro in zip(path,pro):
+                            list.append(dy_model_class.graph_index.kd_represent_to_path_id(single_path))
+                            score_list.append(single_pro)
+                        item_to_path_map[key] = list
+                        item_to_path_score_map[key] = score_list
+
+            elif data_format == "user_embedding":
+                for key in item_to_user_emb:
+                    # print("------******user_embedding*******------")
                     user_emb = item_to_user_emb[key]
                     user_emb = paddle.to_tensor(np.array(user_emb).astype('float32'))
-                    path,pro = dy_model.generate_candidate_path_for_item(user_emb,None,beam_size)   # epoch = 3 ; batchId=0;
+                    path,pro = dy_model.generate_candidate_path_for_item(user_emb,beam_size)   # epoch = 3 ; batchId=0;
 
-                list = []
-                score_list = []
-                path = np.array(path).astype("int32")
-                pro = np.array(pro).astype("float")
-                if not pernalize_path_to_item_count:
-                    for single_path,single_pro in zip(path,pro):
-                        list.append((single_pro,single_path))
-                    sorted(list,key=itemgetter(0), reverse=True)
-                    topk = []
-                    for i in range(dy_model_class.item_path_volume):
-                        topk.append(dy_model_class.graph_index.kd_represent_to_path_id(list[i][1]))
+                    list = []
+                    score_list = []
+                    path = np.array(path).astype("int32")
+                    pro = np.array(pro).astype("float")
+                    if not pernalize_path_to_item_count:
+                        for single_path,single_pro in zip(path,pro):
+                            list.append((single_pro,single_path))
+                        sorted(list,key=itemgetter(0), reverse=True)
+                        topk = []
+                        for i in range(dy_model_class.item_path_volume):
+                            topk.append(dy_model_class.graph_index.kd_represent_to_path_id(list[i][1]))
 
-                    topk = np.array(topk).astype("int32")
-                    dy_model_class.graph_index._graph.add_item(key, topk)
-                else:
-                    for single_path,single_pro in zip(path,pro):
-                        list.append(dy_model_class.graph_index.kd_represent_to_path_id(single_path))
-                        score_list.append(single_pro)
-                    item_to_path_map[key] = list
-                    item_to_path_score_map[key] = score_list
+                        topk = np.array(topk).astype("int32")
+                        dy_model_class.graph_index._graph.add_item(key, topk)
+                    else:
+                        for single_path,single_pro in zip(path,pro):
+                            list.append(dy_model_class.graph_index.kd_represent_to_path_id(single_path))
+                            score_list.append(single_pro)
+                        item_to_path_map[key] = list
+                        item_to_path_score_map[key] = score_list
+
             if pernalize_path_to_item_count:
-                print("in update j path",item_to_path_score_map,item_to_path_score_map)
+                # print("in update j path",item_to_path_score_map,item_to_path_score_map)
                 dy_model_class.graph_index.update_Jpath_of_item(item_to_path_map,item_to_path_score_map, 10,0.1)
 
             dict = dy_model_class.graph_index._graph.get_item_path_dict()

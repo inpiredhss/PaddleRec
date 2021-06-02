@@ -39,7 +39,7 @@ class DygraphModel():
         self.graph_index._graph.load(path)
 
     def create_model(self, config):
-        print("create model")
+        # print("create model")
         self.path_save_file_name = "path_save";
         self.width = config.get("hyper_parameters.width")
         self.height = config.get("hyper_parameters.height")
@@ -183,7 +183,7 @@ class DygraphModel():
         
         item_seq, cat_seq, item_id, user_embedding, item_path_kd_label,multi_task_pos_label,multi_task_neg_label, mask = self.create_feeds(batch_data, config)
 
-        print("--------item_seq, cat_seq, item_id, user_embedding,",item_seq, cat_seq, item_id, user_embedding,)
+        # print("--------item_seq, cat_seq, item_id, user_embedding,",item_seq, cat_seq, item_id, user_embedding,)
 
         path_prob,multi_task_loss = dy_model.forward(
             item_seq, cat_seq, user_embedding,item_path_kd_label,multi_task_pos_label,multi_task_neg_label, mask, False, False)

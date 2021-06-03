@@ -367,7 +367,7 @@ class DeepRetrieval(nn.Layer):
             # print("seq_shape",seq_shape)
             # print("seq_len",seq_len)
             # print("hist_seq_concat-------:",hist_seq_concat.shape) 
-            batchSize = len(hist_seq_concat)
+            batchSize = seq_shape[0]
             # print("user_seq_len-------:",user_seq_len)   # how to set gru_input??
             # gru_input=paddle.reshape(hist_seq_concat, shape = [-1, user_seq_len, self.gru_input_size])    # tensor [1, 2, 128]
 

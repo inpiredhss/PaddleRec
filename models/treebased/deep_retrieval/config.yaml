@@ -14,7 +14,7 @@
 
 
 runner:
-  train_data_dir: "train_data"
+  train_data_dir: "/sshSpace/dr_job/train_data/" # "train_data"
   #train_reader_path: "fake_reader" # importlib format
   train_reader_path: "static_reader"
   use_gpu: False
@@ -27,7 +27,7 @@ runner:
   #model_init_path: "output_model/0" # init model
   model_save_path: "output_model_dr"
   em_execution_interval: 2
-  test_data_dir: "test_data"
+  test_data_dir: "/sshSpace/dr_job/train_data/"  # "test_data"
   infer_reader_path: "fake_infer_reader" # importlib format
   infer_batch_size: 2
   infer_load_path: "output_model_dr"
